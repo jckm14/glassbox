@@ -10,10 +10,28 @@ ROOT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 ASSET_PARENT="$ROOT_DIR/docs/assets"
 ASSET_DIR="$ASSET_PARENT/launch"
 mkdir -p "$ASSET_PARENT"
+read -r ASSET_PARENT_DEVICE ASSET_PARENT_INODE < <(
+  python3 - "$ASSET_PARENT" <<'PY'
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+try:
+    details = os.lstat(path)
+except OSError as exc:
+    raise SystemExit(f"Could not inspect launch-asset parent: {exc}") from exc
+if stat.S_ISLNK(details.st_mode) or not stat.S_ISDIR(details.st_mode):
+    raise SystemExit("Launch-asset parent is not a real directory")
+print(details.st_dev, details.st_ino)
+PY
+)
 
 DEMO_DIR=""
 CHROMIUM_DIR=""
 STAGING_DIR=""
+STAGING_DEVICE=""
+STAGING_INODE=""
 SERVER_PID=""
 PORT=""
 
@@ -22,7 +40,15 @@ cleanup() {
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
   fi
-  for directory in "$DEMO_DIR" "$CHROMIUM_DIR" "$STAGING_DIR"; do
+  if [[ -n "$STAGING_DIR" && -n "$STAGING_DEVICE" && -n "$STAGING_INODE" ]]; then
+    python3 "$ROOT_DIR/scripts/publish-launch-assets.py" --cleanup-staging \
+      "$STAGING_DIR" "$ASSET_PARENT_DEVICE" "$ASSET_PARENT_INODE" \
+      "$STAGING_DEVICE" "$STAGING_INODE" || \
+      printf 'Staging cleanup was unsafe; recovery retained at %s\n' \
+        "$STAGING_DIR" >&2
+    STAGING_DIR=""
+  fi
+  for directory in "$DEMO_DIR" "$CHROMIUM_DIR"; do
     if [[ -n "$directory" ]]; then
       rm -rf -- "$directory"
     fi
@@ -32,7 +58,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-for command in uv curl chromium convert identify timeout python3; do
+for command in uv curl chromium convert identify timeout python3 stat; do
   command -v "$command" >/dev/null || {
     printf 'Missing required command: %s\n' "$command" >&2
     exit 1
@@ -49,6 +75,7 @@ done
 DEMO_DIR=$(mktemp -d /tmp/glassbox-launch-assets.XXXXXX)
 CHROMIUM_DIR=$(mktemp -d "$HOME/glassbox-launch-assets.XXXXXX")
 STAGING_DIR=$(mktemp -d "$ASSET_PARENT/.launch-stage.XXXXXX")
+read -r STAGING_DEVICE STAGING_INODE < <(stat -c '%d %i' -- "$STAGING_DIR")
 NONCE=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
 PORT_FILE="$DEMO_DIR/port"
 
@@ -138,15 +165,28 @@ rollback = json.loads(sys.argv[1])
 verification = json.loads(sys.argv[2])
 events = json.loads(sys.argv[3])["events"]
 target = Path(sys.argv[4])
-assert rollback["status"] == "rolled_back"
-assert rollback["rollback_receipt_id"] == 5
-assert verification == {"valid": True, "event_count": 5, "broken_at": None}
-assert len(events) == 5
-assert events[0]["id"] == 5
-assert events[0]["action"] == "file.rollback"
-assert events[0]["metadata"]["rolled_back_event_id"] == 3
-assert target.is_file()
-assert target.read_text(encoding="utf-8") == ""
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise SystemExit(f"Launch rollback validation failed: {message}")
+
+
+require(rollback.get("status") == "rolled_back", "rollback status was not rolled_back")
+require(rollback.get("rollback_receipt_id") == 5, "rollback receipt ID was not 5")
+require(
+    verification == {"valid": True, "event_count": 5, "broken_at": None},
+    "receipt-chain verification did not match the expected valid five-event chain",
+)
+require(len(events) == 5, "event list did not contain five receipts")
+require(events[0].get("id") == 5, "newest receipt ID was not 5")
+require(events[0].get("action") == "file.rollback", "newest receipt was not a rollback")
+require(
+    events[0].get("metadata", {}).get("rolled_back_event_id") == 3,
+    "rollback receipt did not reference event 3",
+)
+require(target.is_file(), "restored target is not a regular file")
+require(target.read_text(encoding="utf-8") == "", "restored target bytes were incorrect")
 PY
 
 capture_dashboard "$CHROMIUM_DIR/after-rollback.png"
@@ -196,32 +236,8 @@ rm -f -- \
   "$STAGING_DIR/.social-preview.png"
 
 # validate staged launch assets before publishing the directory as one set
-python3 - "$STAGING_DIR" "$NONCE" <<'PY'
-from pathlib import Path
-import subprocess
-import sys
-
-stage = Path(sys.argv[1])
-nonce = sys.argv[2].encode("ascii")
-expected = {"dashboard.png", "walkthrough.gif", "social-card.png"}
-actual = {path.name for path in stage.iterdir()}
-assert actual == expected, (actual, expected)
-
-def dimensions(path: Path) -> list[str]:
-    output = subprocess.check_output(
-        ["identify", "-format", "%w x %h\n", str(path)], text=True
-    )
-    return output.splitlines()
-
-assert dimensions(stage / "dashboard.png") == ["1280 x 1331"]
-assert dimensions(stage / "social-card.png") == ["1280 x 640"]
-assert len(dimensions(stage / "walkthrough.gif")) == 2
-for path in stage.iterdir():
-    payload = path.read_bytes()
-    assert nonce not in payload
-    assert b"/home/" not in payload
-    assert b"/tmp/" not in payload
-PY
+ASSET_MANIFEST=$(python3 scripts/validate-launch-assets.py \
+  "$STAGING_DIR" "$NONCE" "$DEMO_DIR" "$CHROMIUM_DIR" "$STAGING_DIR")
 chmod 0755 "$STAGING_DIR"
 chmod 0644 "$STAGING_DIR/dashboard.png" \
   "$STAGING_DIR/walkthrough.gif" \
@@ -232,44 +248,11 @@ if [[ "${GLASSBOX_RENDER_TEST_FAIL_BEFORE_PUBLISH:-0}" == "1" ]]; then
   exit 97
 fi
 
-python3 - "$STAGING_DIR" "$ASSET_DIR" <<'PY'
-from __future__ import annotations
-
-import ctypes
-import os
-from pathlib import Path
-import sys
-
-source = Path(sys.argv[1]).resolve()
-destination = Path(sys.argv[2]).resolve()
-if not destination.exists():
-    os.rename(source, destination)
-else:
-    libc = ctypes.CDLL(None, use_errno=True)
-    renameat2 = libc.renameat2
-    renameat2.argtypes = [
-        ctypes.c_int,
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_char_p,
-        ctypes.c_uint,
-    ]
-    renameat2.restype = ctypes.c_int
-    at_fdcwd = -100
-    rename_exchange = 2  # RENAME_EXCHANGE
-    result = renameat2(
-        at_fdcwd,
-        os.fsencode(source),
-        at_fdcwd,
-        os.fsencode(destination),
-        rename_exchange,
-    )
-    if result != 0:
-        error = ctypes.get_errno()
-        raise OSError(error, os.strerror(error), f"{source} <-> {destination}")
-PY
-rm -rf -- "$STAGING_DIR"
+PUBLISH_STAGING_DIR=$STAGING_DIR
 STAGING_DIR=""
+python3 scripts/publish-launch-assets.py \
+  "$PUBLISH_STAGING_DIR" "$ASSET_DIR" \
+  "$ASSET_PARENT_DEVICE" "$ASSET_PARENT_INODE" "$ASSET_MANIFEST"
 
 printf 'Wrote %s, %s, and %s\n' \
   "$ASSET_DIR/dashboard.png" \
