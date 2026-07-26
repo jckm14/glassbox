@@ -4,20 +4,53 @@ build-backend = "hatchling.build"
 
 [project]
 name = "glassbox-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local-first receipts and safe undo for AI agents"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [
+  { name = "Chris", email = "jckm14@gmail.com" },
+]
+keywords = ["ai-agents", "audit-log", "rollback", "security", "local-first"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Framework :: FastAPI",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+]
 dependencies = [
   "fastapi>=0.116,<1",
   "uvicorn>=0.35,<1",
   "cryptography>=45,<47",
 ]
 
+[project.urls]
+Homepage = "https://github.com/jckm14/glassbox"
+Documentation = "https://github.com/jckm14/glassbox#readme"
+Repository = "https://github.com/jckm14/glassbox.git"
+Issues = "https://github.com/jckm14/glassbox/issues"
+Changelog = "https://github.com/jckm14/glassbox/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 test = [
   "httpx2>=2,<3",
   "pytest>=8,<10",
+]
+
+[dependency-groups]
+dev = [
+  "httpx2==2.9.1",
+  "mypy==2.3.0",
+  "pytest==9.1.1",
+  "ruff==0.16.0",
 ]
 
 [project.scripts]

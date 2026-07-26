@@ -59,7 +59,7 @@ class RollbackRequest(BaseModel):
 
 
 def create_app(*, data_dir: str | Path, workspace: str | Path) -> FastAPI:
-    app = FastAPI(title="Glassbox", version="0.1.0")
+    app = FastAPI(title="Glassbox", version="0.1.1")
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_response(

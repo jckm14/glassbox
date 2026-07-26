@@ -80,11 +80,11 @@ def test_metadata_values_under_sensitive_keys_are_redacted(tmp_path):
                 "target": "notes.txt",
                 "summary": "Read notes",
                 "metadata": {
-                    "password": "hunter2",
+                    "password": "hunter2",  # pragma: allowlist secret
                     "nested": {
-                        "api_key": "short-secret",
-                        "client_secret": "client-value",
-                        "openai_api_key": "openai-value",
+                        "api_key": "short-secret",  # pragma: allowlist secret
+                        "client_secret": "client-value",  # pragma: allowlist secret
+                        "openai_api_key": "openai-value",  # pragma: allowlist secret
                         "safe": "visible",
                     },
                 },

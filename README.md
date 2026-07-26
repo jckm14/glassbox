@@ -6,7 +6,7 @@ Glassbox is a local-first action ledger for AI agents. It records what an agent 
 
 Eligible file writes can be restored from encrypted snapshots. Rollback is restricted to a configured workspace and refuses to overwrite files that changed after the recorded action.
 
-![Status](https://img.shields.io/badge/status-MVP-7170ff) ![Python](https://img.shields.io/badge/python-3.11%2B-3776ab) ![Tests](https://img.shields.io/badge/tests-passing-10b981)
+[![CI](https://github.com/jckm14/glassbox/actions/workflows/ci.yml/badge.svg)](https://github.com/jckm14/glassbox/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/jckm14/glassbox)](https://github.com/jckm14/glassbox/releases) [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/) [![License](https://img.shields.io/badge/license-Apache--2.0-10b981)](LICENSE)
 
 ## Why this exists
 
@@ -27,23 +27,22 @@ AI agents are becoming capable of editing files, executing commands, and communi
 - SHA-256 before/after fingerprints
 - Fernet-encrypted rollback snapshots
 - Workspace boundary and path-traversal protection
-- Conflict-protected rollback with atomic filesystem replacement
+- Conflict-protected rollback with Linux atomic filesystem exchange
 - Exportable signed receipt JSON from the dashboard
 - Safe four-event demo timeline
 
 ## Quick start
 
 ```bash
-git clone <your-repository-url> glassbox
+git clone https://github.com/jckm14/glassbox.git
 cd glassbox
-uv venv
-uv pip install --python .venv/bin/python -e '.[test]'
+uv sync --locked --group dev
 ```
 
 Create a populated local demo:
 
 ```bash
-.venv/bin/glassbox demo \
+uv run glassbox demo \
   --workspace ./demo-workspace \
   --data-dir ./.glassbox-data
 ```
@@ -53,7 +52,7 @@ Demo generation uses exclusive file creation and refuses to overwrite an existin
 Start the dashboard:
 
 ```bash
-.venv/bin/glassbox serve \
+uv run glassbox serve \
   --host 127.0.0.1 \
   --port 8765 \
   --workspace ./demo-workspace \
@@ -163,9 +162,19 @@ Rollback uses an atomic directory-fd-relative filesystem exchange, then validate
 ## Development
 
 ```bash
-.venv/bin/pytest -q
-uvx ruff check src tests
+uv sync --locked --group dev
+uv run ruff format --check src tests
+uv run ruff check src tests
+uv run mypy src
+uv run python -m compileall -q src tests
+uv run pytest -q
 uv build
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report suspected vulnerabilities privately according to [SECURITY.md](SECURITY.md), not through public issues.
+
+## License
+
+Glassbox is licensed under the [Apache License 2.0](LICENSE).
 
 The API and rollback behavior are developed test-first. The suite covers recursive and compound sensitive-key redaction, valid and tampered receipt chains, malformed database values, encrypted-snapshot tampering, protected single-link key/database handling, complete rollback eligibility, atomic-exchange conflicts, same-content inode substitution, post-exchange interruption, post-commit receipt reconciliation, pinned-workspace identity, parent-directory and final-symlink substitution, hard-link alias safety, POSIX ACL preservation, private recovery directories, chain-gated rollback, receipt-failure compensation races, workspace escape attempts, concurrent receipt writers, DNS-rebinding/canonical-Origin defenses, non-loopback bind refusal, dashboard security, and safe CLI demo generation.
