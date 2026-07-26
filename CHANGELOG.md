@@ -12,11 +12,16 @@ All notable changes to Glassbox are documented in this file. The project follows
 - Public security-reporting and contribution policies
 - Reproducible GitHub Actions quality, test, and build checks
 - Dependabot configuration for Python and GitHub Actions dependencies
+- Package author, SPDX license, classifier, and project URL metadata
 
 ### Changed
 
 - Public repository and installation links now point to `jckm14/glassbox`
 - Development tools are locked in the `dev` dependency group
+
+### Security
+
+- Updated `cryptography` to 48.0.1 or newer to exclude wheels affected by the bundled OpenSSL vulnerability reported in GHSA-w3h3-4rj7-4ph4
 
 ## [0.1.0] - 2026-07-26
 
