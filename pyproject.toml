@@ -59,6 +59,9 @@ glassbox = "glassbox.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/glassbox"]
 
+[tool.hatch.build.targets.sdist]
+exclude = ["/docs/assets/launch/**"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
