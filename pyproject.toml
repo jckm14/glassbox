@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "glassbox-agent"
+version = "0.1.0"
+description = "Local-first receipts and safe undo for AI agents"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116,<1",
+  "uvicorn>=0.35,<1",
+  "cryptography>=45,<47",
+]
+
+[project.optional-dependencies]
+test = [
+  "httpx2>=2,<3",
+  "pytest>=8,<10",
+]
+
+[project.scripts]
+glassbox = "glassbox.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/glassbox"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

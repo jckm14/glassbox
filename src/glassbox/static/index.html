@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Glassbox — tamper-evident receipts and safe undo for AI agents.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%235b5bd6'/%3E%3Cpath d='M32 15 49 32 32 49 15 32Z' fill='none' stroke='white' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='4' fill='white'/%3E%3C/svg%3E">
+  <title>Glassbox — Agent receipts</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Glassbox home">
+        <span class="brand-mark" aria-hidden="true"><span></span></span>
+        <span>Glassbox</span>
+      </a>
+      <nav aria-label="Primary">
+        <a class="nav-item active" href="#timeline">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10M7 21h10M12 3v18M7 8h10M7 16h10"/></svg>
+          Receipts
+        </a>
+        <a class="nav-item" href="#integrate">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 9 4 12l4 3M16 9l4 3-4 3M14 5l-4 14"/></svg>
+          Integrate
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="local-pill"><span class="pulse"></span> Local-first</div>
+        <p>Nothing leaves this machine.</p>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div class="breadcrumbs"><span>Workspace</span><b>/</b><strong>Agent receipts</strong></div>
+        <div class="top-actions">
+          <button id="verify-button" class="button ghost" type="button">Verify chain</button>
+          <button id="export-button" class="button primary" type="button">Export receipts</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="hero" id="timeline">
+          <div>
+            <span class="eyebrow">AI ACTION LEDGER</span>
+            <h1>Agent receipts</h1>
+            <p>See what your agents changed, why they changed it, and whether it can be safely undone.</p>
+          </div>
+          <div id="chain-badge" class="chain-badge checking"><span class="status-dot"></span><span>Checking chain…</span></div>
+        </section>
+
+        <section class="metrics" aria-label="Receipt summary">
+          <article class="metric"><span>Total receipts</span><strong id="metric-total">—</strong><small>Chained ledger events</small></article>
+          <article class="metric"><span>Chain status</span><strong id="metric-chain">—</strong><small>HMAC-SHA256 verified</small></article>
+          <article class="metric"><span>Rollback eligible</span><strong id="metric-reversible">—</strong><small>Snapshot supplied; live checks apply</small></article>
+          <article class="metric"><span>High risk</span><strong id="metric-risk">—</strong><small>Needs human attention</small></article>
+        </section>
+
+        <section class="panel timeline-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Timeline</h2>
+              <p>Newest agent actions appear first.</p>
+            </div>
+            <div class="controls">
+              <label class="search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+                <input id="search" type="search" placeholder="Search receipts" autocomplete="off">
+              </label>
+              <select id="risk-filter" aria-label="Filter receipts">
+                <option value="all">All risk levels</option>
+                <option value="high">High risk</option>
+                <option value="medium">Medium risk</option>
+                <option value="reversible">Rollback eligible</option>
+              </select>
+            </div>
+          </div>
+          <div id="timeline-list" class="timeline-list" aria-live="polite">
+            <div class="loading-row"><span class="spinner"></span>Loading receipts…</div>
+          </div>
+        </section>
+
+        <section class="panel integration" id="integrate">
+          <div>
+            <span class="eyebrow">TWO-MINUTE INTEGRATION</span>
+            <h2>Give any agent a receipt printer.</h2>
+            <p>Post an event after an action. Glassbox handles redaction, risk labels, encrypted snapshots, and receipt chaining.</p>
+          </div>
+          <div class="code-card">
+            <div class="code-title"><span><i></i><i></i><i></i></span><b>record-action.sh</b><button id="copy-code" type="button">Copy</button></div>
+            <pre><code id="integration-code">curl -X POST http://127.0.0.1:8765/api/events \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "agent": "my-agent",
+    "action": "file.write",
+    "target": "notes/plan.md",
+    "summary": "Updated the project plan",
+    "before_text": "old content",
+    "after_text": "new content"
+  }'</code></pre>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="receipt-dialog">
+    <div class="dialog-head"><div><span class="eyebrow">RECEIPT DETAIL</span><h2 id="dialog-title">Receipt</h2></div><button id="dialog-close" class="icon-button" aria-label="Close">×</button></div>
+    <div id="dialog-content"></div>
+    <div class="dialog-actions"><button id="rollback-button" class="button danger" type="button" hidden>Safely undo this change</button></div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
