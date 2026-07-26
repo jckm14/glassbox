@@ -16,10 +16,11 @@ uv sync --locked --group dev
 Before opening a pull request, run the same checks as CI:
 
 ```bash
-uv run ruff format --check src tests
-uv run ruff check src tests
-uv run mypy src
-uv run python -m compileall -q src tests
+uv run ruff format --check src tests scripts/render-launch-server.py
+uv run ruff check src tests scripts/render-launch-server.py
+shellcheck scripts/render-launch-assets.sh
+uv run mypy src scripts/render-launch-server.py
+uv run python -m compileall -q src tests scripts/render-launch-server.py
 uv run pytest -q
 uv build
 ```
