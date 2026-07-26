@@ -18,7 +18,9 @@ Regenerate the visual assets on Linux with Chromium and ImageMagick installed:
 scripts/render-launch-assets.sh
 ```
 
-The renderer creates isolated demo state under `/tmp`, binds Glassbox to a temporary loopback port, performs one real rollback, writes the public assets, and removes the temporary state when it exits.
+The renderer creates isolated demo state under `/tmp`, binds a run-specific readiness endpoint to a pre-opened loopback socket, performs and verifies one real rollback, validates all three assets in a private staging directory, atomically publishes the complete set, and removes temporary state when it exits. It fixes the receipt timestamp, timezone, and browser locale so repeated runs with the same local toolchain are stable.
+
+Output is **not guaranteed byte-for-byte across different rendering toolchains**. Chromium, ImageMagick, and installed DejaVu font versions can alter pixels or encoding. Review generated diffs after any toolchain update rather than treating historical hashes as a release invariant.
 
 ## Canonical product facts
 
