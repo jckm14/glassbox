@@ -7,3 +7,4 @@ dist/
 build/
 .glassbox-data/
 demo-workspace/
+docs/assets/.launch-stage.*/

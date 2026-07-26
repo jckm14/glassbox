@@ -32,7 +32,7 @@ For eligible file writes, integrations can submit the previous and resulting tex
 1. An integration records a `file.write` receipt with before and after text.
 2. Glassbox marks the receipt rollback-eligible and encrypts the previous state.
 3. A confirmed rollback runs live workspace, path, inode, ownership, mode, ACL, content, and chain checks.
-4. The restored file and a new rollback receipt remain visible in the append-only timeline.
+4. The renderer verifies the restored file bytes; the dashboard shows a new rollback receipt and a valid chain.
 
 ## What you get
 
@@ -197,10 +197,11 @@ Rollback uses an atomic directory-fd-relative filesystem exchange, then validate
 
 ```bash
 uv sync --locked --group dev
-uv run ruff format --check src tests
-uv run ruff check src tests
-uv run mypy src
-uv run python -m compileall -q src tests
+uv run ruff format --check src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
+uv run ruff check src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
+shellcheck scripts/render-launch-assets.sh
+uv run mypy src scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
+uv run python -m compileall -q src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
 uv run pytest -q
 uv build
 ```

@@ -11,7 +11,7 @@ Find ten agent developers or operators willing to run the demo and explain which
 - [x] Security policy and private vulnerability reporting
 - [x] Python 3.11–3.13 CI and CodeQL
 - [x] Secret scanning and push protection
-- [x] Dashboard screenshot and reproducible walkthrough
+- [x] Dashboard screenshot and repeatable synthetic walkthrough
 - [x] Public alpha-feedback issue
 - [ ] Re-read every post against the current README
 - [ ] Confirm the latest CI run is green
