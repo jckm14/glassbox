@@ -38,15 +38,15 @@ jobs:
       - name: Install locked development environment
         run: uv sync --locked --group dev
       - name: Check formatting
-        run: uv run ruff format --check src tests scripts/render-launch-server.py
+        run: uv run ruff format --check src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
       - name: Lint
-        run: uv run ruff check src tests scripts/render-launch-server.py
+        run: uv run ruff check src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
       - name: Lint launch renderer shell
         run: shellcheck scripts/render-launch-assets.sh
       - name: Type-check
-        run: uv run mypy src scripts/render-launch-server.py
+        run: uv run mypy src scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
       - name: Compile
-        run: uv run python -m compileall -q src tests scripts/render-launch-server.py
+        run: uv run python -m compileall -q src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
       - name: Test
         run: uv run pytest -q
 

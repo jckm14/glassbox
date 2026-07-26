@@ -197,11 +197,11 @@ Rollback uses an atomic directory-fd-relative filesystem exchange, then validate
 
 ```bash
 uv sync --locked --group dev
-uv run ruff format --check src tests scripts/render-launch-server.py
-uv run ruff check src tests scripts/render-launch-server.py
+uv run ruff format --check src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
+uv run ruff check src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
 shellcheck scripts/render-launch-assets.sh
-uv run mypy src scripts/render-launch-server.py
-uv run python -m compileall -q src tests scripts/render-launch-server.py
+uv run mypy src scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
+uv run python -m compileall -q src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
 uv run pytest -q
 uv build
 ```
