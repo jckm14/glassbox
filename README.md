@@ -1,24 +1,58 @@
 # Glassbox
 
-**Receipts and safe undo for AI agents.**
+<p align="center"><strong>Your AI agent changed a file. Glassbox shows what happened—and gives you a guarded way back.</strong></p>
 
-Glassbox is a local-first action ledger for AI agents. It records what an agent changed, explains the action in plain language, redacts common secret formats, labels risk, and chains every receipt with HMAC-SHA256 so later tampering is detectable.
+<p align="center">
+  <a href="https://github.com/jckm14/glassbox/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/jckm14/glassbox/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/jckm14/glassbox/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/jckm14/glassbox"></a>
+  <a href="https://www.python.org/"><img alt="Python 3.11 or newer" src="https://img.shields.io/badge/python-3.11%2B-3776ab"></a>
+  <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/license-Apache--2.0-10b981"></a>
+</p>
 
-Eligible file writes can be restored from encrypted snapshots. Rollback is restricted to a configured workspace and refuses to overwrite files that changed after the recorded action.
+<p align="center">
+  <a href="#quick-start">Run the demo</a> ·
+  <a href="#security-model">Read the security model</a> ·
+  <a href="https://github.com/jckm14/glassbox/releases/latest">Download the latest release</a> ·
+  <a href="https://github.com/jckm14/glassbox/issues/8">Share feedback</a>
+</p>
 
-[![CI](https://github.com/jckm14/glassbox/actions/workflows/ci.yml/badge.svg)](https://github.com/jckm14/glassbox/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/jckm14/glassbox)](https://github.com/jckm14/glassbox/releases) [![Python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/) [![License](https://img.shields.io/badge/license-Apache--2.0-10b981)](LICENSE)
+![Glassbox dashboard showing a verified receipt chain, risk labels, and rollback eligibility](https://raw.githubusercontent.com/jckm14/glassbox/main/docs/assets/launch/dashboard.png)
+
+Glassbox is a local-first action ledger for AI agents—a flight recorder with guarded rollback for eligible text-file writes. Integrations submit actions to Glassbox after execution. Glassbox records a plain-language receipt, redacts common secret formats, assigns deterministic risk, and chains the receipt with HMAC-SHA256 so later tampering is detectable.
+
+For eligible file writes, integrations can submit the previous and resulting text. Glassbox encrypts the previous state locally and will restore it only if the complete receipt chain verifies and live filesystem checks show that rollback will not overwrite newer work.
+
+> [!IMPORTANT]
+> Glassbox is alpha software for Linux. It does not intercept agent tools automatically, and its rollback guarantees have explicit platform and durability limits. Read the [security model](#security-model) and [MVP limitations](#mvp-limitations) before protecting important work.
+
+## See it in action
+
+![Two-step Glassbox walkthrough: record an agent action, then restore the file while preserving history](https://raw.githubusercontent.com/jckm14/glassbox/main/docs/assets/launch/walkthrough.gif)
+
+1. An integration records a `file.write` receipt with before and after text.
+2. Glassbox marks the receipt rollback-eligible and encrypts the previous state.
+3. A confirmed rollback runs live workspace, path, inode, ownership, mode, ACL, content, and chain checks.
+4. The renderer verifies the restored file bytes; the dashboard shows a new rollback receipt and a valid chain.
+
+## What you get
+
+- **Readable receipts:** agent, action, target, summary, timestamp, risk, and redacted metadata.
+- **Tamper evidence:** canonical HMAC-SHA256 chaining identifies the first broken receipt.
+- **Guarded rollback:** encrypted snapshots and conflict checks for eligible UTF-8 file writes.
+- **Local operation:** SQLite, local keys, a loopback-only API, and no required cloud service.
+- **Inspectable behavior:** an Apache-2.0 codebase, documented limitations, and security-focused tests.
 
 ## Why this exists
 
-AI agents are becoming capable of editing files, executing commands, and communicating on a user's behalf. Conventional chat history is not an operational audit trail. Glassbox gives every action a durable receipt:
+AI agents can edit files, execute commands, and communicate on a user's behalf. Chat history is not an operational audit trail, and a generic backup does not answer whether a particular agent action is still safe to reverse. Glassbox gives each submitted action a durable receipt:
 
 - **What happened?** Agent, action, target, summary, timestamp, and metadata.
 - **Was it dangerous?** Deterministic low, medium, or high risk labels.
 - **Was the log changed later?** A keyed hash chain identifies the first broken receipt.
 - **Can I undo it?** Encrypted pre-change snapshots for eligible file writes.
-- **Will undo destroy newer work?** No—current content must match the recorded post-change hash.
+- **Will undo destroy newer work?** Current content and object identity must still match the recorded action.
 
-## MVP features
+## Current capabilities
 
 - FastAPI ingestion and query API
 - Responsive local dashboard with search and risk filters
@@ -163,10 +197,11 @@ Rollback uses an atomic directory-fd-relative filesystem exchange, then validate
 
 ```bash
 uv sync --locked --group dev
-uv run ruff format --check src tests
-uv run ruff check src tests
-uv run mypy src
-uv run python -m compileall -q src tests
+uv run ruff format --check src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
+uv run ruff check src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
+shellcheck scripts/render-launch-assets.sh
+uv run mypy src scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
+uv run python -m compileall -q src tests scripts/render-launch-server.py scripts/validate-launch-assets.py scripts/publish-launch-assets.py
 uv run pytest -q
 uv build
 ```

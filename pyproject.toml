@@ -29,7 +29,7 @@ classifiers = [
 dependencies = [
   "fastapi>=0.116,<1",
   "uvicorn>=0.35,<1",
-  "cryptography>=48.0.1,<49",
+  "cryptography>=49.0.0,<50",
 ]
 
 [project.urls]
@@ -58,6 +58,9 @@ glassbox = "glassbox.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/glassbox"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/docs/assets/launch/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

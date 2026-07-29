@@ -1,0 +1,57 @@
+name: Integration request
+description: Propose an agent, framework, or tool integration for Glassbox
+title: "integration: "
+labels:
+  - integration
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping Glassbox meet agents where they already run. Do not include credentials, private receipt exports, signing keys, recovery files, or sensitive workspace content. Report suspected vulnerabilities through [GitHub private vulnerability reporting](https://github.com/jckm14/glassbox/security/advisories/new), not this form.
+  - type: input
+    id: project
+    attributes:
+      label: Agent, framework, or tool
+      description: Link to the project and name the version you use.
+      placeholder: "Example: LangGraph 1.x — https://github.com/..."
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow
+      description: Describe the real workflow and where Glassbox would receive an event. Sanitize names, paths, metadata, and content before posting.
+      placeholder: "The agent edits configuration files after..."
+    validations:
+      required: true
+  - type: textarea
+    id: actions
+    attributes:
+      label: Actions that need receipts
+      description: List concrete action names and the metadata needed to understand them, using sanitized examples only.
+      placeholder: "file.write, shell.exec, outbound.send..."
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback expectations
+      description: Which actions, if any, should be reversible, and what live conflicts must stop rollback?
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where would Glassbox run?
+      options:
+        - Developer workstation
+        - CI runner
+        - Local or private server
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I may be able to test an integration prototype.
+        - label: I may be able to contribute implementation or documentation.

@@ -21,7 +21,7 @@ All notable changes to Glassbox are documented in this file. The project follows
 
 ### Security
 
-- Updated `cryptography` to 48.0.1 or newer to exclude wheels affected by the bundled OpenSSL vulnerability reported in GHSA-w3h3-4rj7-4ph4
+- Updated `cryptography` to 48.0.1 or newer to exclude wheels affected by the bundled OpenSSL vulnerability reported in GHSA-537c-gmf6-5ccf
 
 ## [0.1.0] - 2026-07-26
 
