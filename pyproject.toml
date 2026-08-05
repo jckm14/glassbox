@@ -29,7 +29,7 @@ classifiers = [
 dependencies = [
   "fastapi>=0.141.1,<1",
   "uvicorn>=0.52.0,<1",
-  "cryptography>=49.0.0,<50",
+  "cryptography>=50.0.0,<51",
 ]
 
 [project.urls]
