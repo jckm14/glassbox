@@ -208,6 +208,12 @@ uv build
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report suspected vulnerabilities privately according to [SECURITY.md](SECURITY.md), not through public issues.
 
+## Support Glassbox
+
+If Glassbox is useful to you or your team, [sponsor its development](https://github.com/sponsors/jckm14). Your support helps fund maintenance, security-focused testing, documentation, and integration examples.
+
+Read [how sponsorship supports Glassbox](SPONSORSHIP.md). Bug reports, documentation improvements, and code contributions are welcome too.
+
 ## License
 
 Glassbox is licensed under the [Apache License 2.0](LICENSE).
