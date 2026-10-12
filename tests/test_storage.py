@@ -467,3 +467,28 @@ def test_second_server_on_the_same_data_directory_is_refused(tmp_path, monkeypat
         create_app(data_dir=tmp_path / "data", workspace=workspace)
     # Shutdown releases the lock.
     create_app(data_dir=tmp_path / "data", workspace=workspace)
+
+
+def test_dashboard_assets_stay_within_the_content_security_policy(tmp_path):
+    import re
+    from importlib.metadata import version
+
+    import glassbox
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    app = create_app(data_dir=tmp_path / "data", workspace=workspace)
+
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        page = client.get("/").text
+        script = client.get("/static/app.js").text
+        config = client.get("/api/config").json()
+
+    # style-src and script-src are 'self': inline styles and handlers would be blocked.
+    assert not re.search(r"\sstyle=|\son[a-z]+=|<style|<script(?![^>]*\ssrc=)", page)
+    assert "style=" not in script
+    assert "https://" not in script and "http://" not in script
+    for element in ("agent-filter", "session-filter", "load-more", "dialog-diff"):
+        assert f'id="{element}"' in page
+    assert "glassbox hook claude-code" in page
+    assert config["version"] == glassbox.__version__ == version("glassbox-agent")

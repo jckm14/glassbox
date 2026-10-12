@@ -28,12 +28,13 @@
       <div class="sidebar-footer">
         <div class="local-pill"><span class="pulse"></span> Local-first</div>
         <p>Nothing leaves this machine.</p>
+        <p id="live-status">Updates automatically.</p>
       </div>
     </aside>
 
     <main>
       <header class="topbar">
-        <div class="breadcrumbs"><span>Workspace</span><b>/</b><strong>Agent receipts</strong></div>
+        <div class="breadcrumbs"><span id="workspace-name">Workspace</span><b>/</b><strong>Agent receipts</strong></div>
         <div class="top-actions">
           <button id="verify-button" class="button ghost" type="button">Verify chain</button>
           <button id="export-button" class="button primary" type="button">Export receipts</button>
@@ -61,23 +62,33 @@
           <div class="panel-header">
             <div>
               <h2>Timeline</h2>
-              <p>Newest agent actions appear first.</p>
+              <p id="timeline-count">Newest agent actions appear first.</p>
             </div>
             <div class="controls">
               <label class="search">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
                 <input id="search" type="search" placeholder="Search receipts" autocomplete="off">
               </label>
-              <select id="risk-filter" aria-label="Filter receipts">
+              <select id="risk-filter" aria-label="Filter receipts by risk">
                 <option value="all">All risk levels</option>
                 <option value="high">High risk</option>
                 <option value="medium">Medium risk</option>
+                <option value="low">Low risk</option>
                 <option value="reversible">Rollback eligible</option>
+              </select>
+              <select id="agent-filter" aria-label="Filter receipts by agent">
+                <option value="">All agents</option>
+              </select>
+              <select id="session-filter" aria-label="Filter receipts by session" hidden>
+                <option value="">All sessions</option>
               </select>
             </div>
           </div>
           <div id="timeline-list" class="timeline-list" aria-live="polite">
             <div class="loading-row"><span class="spinner"></span>Loading receipts…</div>
+          </div>
+          <div class="timeline-footer" id="timeline-footer" hidden>
+            <button id="load-more" class="button ghost" type="button">Load older receipts</button>
           </div>
         </section>
 
@@ -85,20 +96,26 @@
           <div>
             <span class="eyebrow">TWO-MINUTE INTEGRATION</span>
             <h2>Give any agent a receipt printer.</h2>
-            <p>Post an event after an action. Glassbox handles redaction, risk labels, encrypted snapshots, and receipt chaining.</p>
+            <p>For Claude Code, add the hook below to <code>.claude/settings.json</code>: every edit and shell command becomes a receipt, and edits can be undone. Any other agent can post to <code>/api/events</code> or run <code>glassbox record</code>.</p>
           </div>
           <div class="code-card">
-            <div class="code-title"><span><i></i><i></i><i></i></span><b>record-action.sh</b><button id="copy-code" type="button">Copy</button></div>
-            <pre><code id="integration-code">curl -X POST http://127.0.0.1:8765/api/events \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "agent": "my-agent",
-    "action": "file.write",
-    "target": "notes/plan.md",
-    "summary": "Updated the project plan",
-    "before_text": "old content",
-    "after_text": "new content"
-  }'</code></pre>
+            <div class="code-title"><span><i></i><i></i><i></i></span><b>.claude/settings.json</b><button id="copy-code" type="button">Copy</button></div>
+            <pre><code id="integration-code">{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [{ "type": "command", "command": "glassbox hook claude-code", "timeout": 15 }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [{ "type": "command", "command": "glassbox hook claude-code", "timeout": 15 }] }
+    ],
+    "PostToolUseFailure": [
+      { "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "glassbox hook claude-code", "timeout": 15 }] }
+    ]
+  }
+}</code></pre>
           </div>
         </section>
       </div>
@@ -108,6 +125,7 @@
   <dialog id="receipt-dialog">
     <div class="dialog-head"><div><span class="eyebrow">RECEIPT DETAIL</span><h2 id="dialog-title">Receipt</h2></div><button id="dialog-close" class="icon-button" aria-label="Close">×</button></div>
     <div id="dialog-content"></div>
+    <div id="dialog-diff" hidden></div>
     <div class="dialog-actions"><button id="rollback-button" class="button danger" type="button" hidden>Safely undo this change</button></div>
   </dialog>
 
