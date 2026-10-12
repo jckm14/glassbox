@@ -26,8 +26,10 @@ MAX_TEXT_CHARS = 1_000_000
 _MAX_TARGET_CHARS = 1000
 _MAX_SUMMARY_CHARS = 400
 _MAX_COMMAND_CHARS = 20_000
+# The server caps receipt metadata at 64 KiB of UTF-8.
+_MAX_COMMAND_BYTES = 48_000
 _PENDING_DIR = "pending"
-_PENDING_MAX_AGE_SECONDS = 24 * 60 * 60
+_PENDING_MAX_AGE_SECONDS = 60 * 60
 
 _READ_ACTIONS = {
     "Read": "file.read",
@@ -57,11 +59,13 @@ def hook_settings(command: str = "glassbox hook claude-code") -> dict[str, Any]:
     """Claude Code settings that send file edits and shell commands to Glassbox."""
     hook = {"type": "command", "command": command, "timeout": 15}
     file_matcher = "Write|Edit|MultiEdit|NotebookEdit"
+    after = [{"matcher": f"{file_matcher}|Bash", "hooks": [hook]}]
     return {
         "hooks": {
             "PreToolUse": [{"matcher": file_matcher, "hooks": [hook]}],
-            "PostToolUse": [{"matcher": f"{file_matcher}|Bash", "hooks": [hook]}],
-            "PostToolUseFailure": [{"matcher": "Bash", "hooks": [hook]}],
+            "PostToolUse": after,
+            # A failed edit must still clear the text held for it.
+            "PostToolUseFailure": after,
         }
     }
 
@@ -70,11 +74,20 @@ def _clip(value: str, limit: int) -> str:
     return value if len(value) <= limit else f"{value[: limit - 1]}…"
 
 
+def _clip_bytes(value: str, limit: int) -> str:
+    encoded = value.encode("utf-8")
+    if len(encoded) <= limit:
+        return value
+    return f"{encoded[: limit - 3].decode('utf-8', errors='ignore')}…"
+
+
 def _read_text(path: Path) -> tuple[bool, str | None]:
     """Return ``(exists, text)``; text is ``None`` unless it is modest UTF-8."""
     try:
         descriptor = os.open(
-            path, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+            path,
+            # Non-blocking so a FIFO at the path cannot hang the hook.
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0),
         )
     except FileNotFoundError:
         return False, None
@@ -169,7 +182,12 @@ def _take_stash(data_dir: Path, name: str) -> dict[str, Any] | None:
         return None
     try:
         try:
-            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=pending_fd)
+            descriptor = os.open(
+                name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=pending_fd
+            )
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                os.close(descriptor)
+                return None
         except OSError:
             return None
         try:
@@ -262,7 +280,9 @@ def _shell_event(
     if not isinstance(command, str) or not command.strip():
         return None
     metadata = _base_metadata(payload, tool, workspace)
-    metadata["command"] = _clip(command, _MAX_COMMAND_CHARS)
+    metadata["command"] = _clip_bytes(
+        _clip(command, _MAX_COMMAND_CHARS), _MAX_COMMAND_BYTES
+    )
     if failed:
         metadata["failed"] = True
     response = payload.get("tool_response")

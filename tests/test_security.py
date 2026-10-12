@@ -120,3 +120,82 @@ def test_shell_risk_reads_the_command_from_metadata_when_present():
     assert (
         classify_risk("shell.exec", "deploy step", {"command": "rm -rf dist"}) == "high"
     )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat .env; ls",
+        "cat .env;ls",
+        "cat .env|head",
+        "cat config/secrets.yaml|head",
+    ],
+)
+def test_credential_reads_are_high_whatever_follows_the_path(command):
+    assert classify_risk("shell.exec", command) == "high"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "sort -o /etc/cron.d/x data",
+        "rg --pre ./evil pattern",
+        "git diff --output=/home/u/.bashrc",
+        "git -c core.pager=./evil log",
+        "uniq data /etc/cron.d/x",
+        "less notes.txt",
+        "/bin/rm -r build",
+        "rm --recursive build",
+    ],
+)
+def test_programs_that_can_write_or_execute_are_never_low(command):
+    assert classify_risk("shell.exec", command) != "low"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "rm " + "--a " * 4000 + "x",
+        "curl " * 3900,
+        "aws " * 4900,
+        "a." * 10000,
+        "://a:" * 4000,
+        "-" * 19000,
+        "rm " * 6000,
+        "x" * 100_000,
+        "rm -rf " + "y" * 50_000,
+    ],
+)
+def test_risk_and_redaction_stay_fast_on_hostile_input(text):
+    import time
+
+    started = time.perf_counter()
+    risk = classify_risk("shell.exec", text)
+    redact_text(text)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 2.0
+    assert risk in {"low", "medium", "high"}
+
+
+def test_command_too_long_to_classify_is_high():
+    risk, reason = assess_risk("shell.exec", "echo " + "a" * 30_000)
+
+    assert (risk, reason) == ("high", "Command is too long to classify")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Enable basic authentication for the API",
+        "docs/basic authentication.md",
+    ],
+)
+def test_the_word_basic_in_prose_is_not_redacted(text):
+    assert redact_text(text) == text
+
+
+def test_basic_credentials_are_redacted():
+    assert redact_text("Authorization: Basic dXNlcjpwYXNzd29yZDEyMw==") == (
+        "Authorization: Basic [REDACTED]"
+    )

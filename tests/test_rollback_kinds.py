@@ -414,3 +414,48 @@ def test_incomplete_or_mismatched_snapshots_are_not_reversible(tmp_path, action,
 
     assert event["reversible"] is False
     assert response.status_code == 409
+
+
+def test_nul_in_a_target_is_refused_without_leaking_descriptors(tmp_path):
+    _, app = _app(tmp_path)
+
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        event = _record(client, "file.delete", "d\u0000x/f.txt", before_text="note")
+        before = len(os.listdir("/proc/self/fd"))
+        statuses = {_rollback(client, event["id"]).status_code for _ in range(20)}
+        after = len(os.listdir("/proc/self/fd"))
+
+    assert statuses == {400}
+    assert after <= before + 2
+
+
+def test_recorded_mode_never_restores_a_group_or_world_writable_file(tmp_path):
+    workspace, app = _app(tmp_path)
+
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        event = client.post(
+            "/api/events",
+            json={
+                "agent": "agent",
+                "action": "file.delete",
+                "target": "run.sh",
+                "summary": "Deleted the script",
+                "before_text": "#!/bin/sh\n",
+                "metadata": {"mode": "4777"},
+            },
+        ).json()
+        response = _rollback(client, event["id"])
+
+    assert response.status_code == 200
+    assert stat.S_IMODE((workspace / "run.sh").stat().st_mode) == 0o755
+
+
+def test_fifo_at_the_target_does_not_hang_rollback(tmp_path):
+    workspace, app = _app(tmp_path)
+    os.mkfifo(workspace / "demo.txt")
+
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        event = _record(client, "file.create", "demo.txt", after_text="created")
+        response = _rollback(client, event["id"])
+
+    assert response.status_code == 409

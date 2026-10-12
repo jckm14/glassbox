@@ -321,13 +321,16 @@ def _writer(
     try:
         acquired = lock.acquire(timeout=0.0)
         if not acquired:
-            info = read_holder_info(data_dir)
-            if url is None and not info.get("url"):
-                # Probably another one-shot command; wait for it to finish.
-                acquired = lock.acquire(timeout=5.0)
-        if not acquired:
-            yield None, GlassboxClient(_server_url(data_dir, url))
-            return
+            if url is None and not read_holder_info(data_dir).get("url"):
+                # No server published an address, so the holder is another
+                # one-shot command: wait for it rather than guess a server.
+                if not lock.acquire(timeout=10.0):
+                    raise CommandError(
+                        "Another Glassbox command is still writing to this ledger"
+                    )
+            else:
+                yield None, GlassboxClient(_server_url(data_dir, url))
+                return
         store = EventStore(data_dir)
         try:
             yield store, None
@@ -351,7 +354,10 @@ def record_event(
         raise CommandError(str(exc)) from exc
     with _writer(data_dir, url) as (store, client):
         if store is not None:
-            return store.append(event)
+            try:
+                return store.append(event)
+            except ValueError as exc:
+                raise CommandError(str(exc)) from exc
         assert client is not None
         try:
             return client.record(**event)
@@ -519,6 +525,13 @@ def _command_verify(args: argparse.Namespace) -> int:
         return result
 
     result = _read(args.data_dir, check)
+    for _ in range(2):
+        if result["valid"]:
+            break
+        # A server pruning snapshots between this process's two reads looks
+        # like a missing file; a real break is still there on the next read.
+        time.sleep(0.25)
+        result = _read(args.data_dir, check)
     anchor_ok = result.get("anchor_found", True)
     if args.json:
         _print_json(result)

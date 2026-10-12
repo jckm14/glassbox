@@ -492,3 +492,127 @@ def test_dashboard_assets_stay_within_the_content_security_policy(tmp_path):
         assert f'id="{element}"' in page
     assert "glassbox hook claude-code" in page
     assert config["version"] == glassbox.__version__ == version("glassbox-agent")
+
+
+def _renumber(db_path, mapping):
+    """Change row IDs the way a file-level attacker without the key could."""
+    with sqlite3.connect(db_path) as conn:
+        for old, new in mapping:
+            conn.execute("UPDATE events SET id = ? WHERE id = ?", (new, old))
+
+
+def test_renumbered_rows_cannot_move_a_rollback_onto_another_receipt(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "b.txt").write_text("after\n", encoding="utf-8")
+    store = EventStore(tmp_path / "data")
+    _write_event(store, "a.txt")
+    target = _write_event(store, "b.txt")
+    store.append(
+        {"agent": "agent", "action": "tool.read", "target": "n", "summary": "Read"}
+    )
+    store.rollback(target["id"], workspace)
+
+    # Order is preserved, so the chain still verifies; only the IDs moved.
+    _renumber(store.db_path, [(1, -5), (2, 1), (3, 2)])
+
+    assert store.verify()["valid"] is True
+    by_target = {
+        (event["action"], event["target"]): event for event in store.list_events()
+    }
+    assert by_target[("file.write", "b.txt")]["rolled_back_by"] == 4
+    assert by_target[("file.write", "b.txt")]["reversible"] is False
+    assert by_target[("tool.read", "n")]["rolled_back_by"] is None
+    assert by_target[("file.write", "a.txt")]["reversible"] is True
+
+
+def test_renumbered_rows_cannot_move_a_prune_excuse_onto_a_live_snapshot(tmp_path):
+    store = EventStore(tmp_path / "data")
+    store.append(
+        {"agent": "agent", "action": "tool.read", "target": "n", "summary": "Read"}
+    )
+    old = _write_event(store, "old.txt")
+    new = _write_event(store, "new.txt")
+    snapshots = store.data_dir / "snapshots"
+    saved = {
+        name: (snapshots / name).read_bytes()
+        for name in (old["snapshot_sha256"], old["diff_sha256"])
+    }
+    store.prune_snapshots(keep_last=1)
+
+    # Shift IDs so the prune receipt's numeric IDs now point at new.txt,
+    # put the pruned files back, and delete the snapshot that was kept.
+    _renumber(store.db_path, [(1, 0), (2, 1), (3, 2)])
+    for name, content in saved.items():
+        (snapshots / name).write_bytes(content)
+        (snapshots / name).chmod(0o600)
+    (snapshots / new["snapshot_sha256"]).unlink()
+
+    assert store.verify()["valid"] is False
+
+
+def test_oversized_snapshot_is_refused_instead_of_breaking_the_ledger(
+    tmp_path, monkeypatch
+):
+    import glassbox.store as store_module
+
+    store = EventStore(tmp_path / "data")
+    _write_event(store)
+    monkeypatch.setattr(store_module, "_MAX_BLOB_BYTES", 1024)
+
+    with pytest.raises(ValueError, match="too large"):
+        _write_event(store, "huge.txt", before_text="x" * 4096)
+
+    monkeypatch.undo()
+    assert store.verify() == {"valid": True, "event_count": 1, "broken_at": None}
+    assert len(_snapshot_files(store)) == 2
+
+
+def test_verification_is_not_interleaved_with_pruning(tmp_path, monkeypatch):
+    import threading
+
+    store = EventStore(tmp_path / "data")
+    for index in range(3):
+        _write_event(store, f"file-{index}.txt")
+    real_read = store._read_blob
+    started = threading.Event()
+    pruner_done = threading.Event()
+
+    def slow_read(digest):
+        if not started.is_set():
+            started.set()
+            # Give a concurrent prune every chance to run mid-verification.
+            pruner_done.wait(timeout=0.5)
+        return real_read(digest)
+
+    monkeypatch.setattr(store, "_read_blob", slow_read)
+
+    def prune():
+        started.wait(timeout=5)
+        store.prune_snapshots(keep_last=0)
+        pruner_done.set()
+
+    thread = threading.Thread(target=prune)
+    thread.start()
+    result = store.verify()
+    thread.join(timeout=10)
+
+    assert result["valid"] is True
+    assert store.verify()["valid"] is True
+
+
+def test_out_of_range_identifiers_are_rejected_not_crashed(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    app = create_app(data_dir=tmp_path / "data", workspace=workspace)
+
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        statuses = [
+            client.get(f"/api/events/{2**70}").status_code,
+            client.get(f"/api/events?before_id={2**70}").status_code,
+            client.post(
+                f"/api/events/{2**70}/rollback", json={"confirm": True}
+            ).status_code,
+        ]
+
+    assert statuses == [422, 422, 422]

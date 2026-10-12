@@ -11,6 +11,7 @@ from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import Path as PathParam
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,6 +24,8 @@ from .store import EventStore, RollbackError, validate_external_event
 
 _PRUNE_INTERVAL_SECONDS = 6 * 60 * 60
 _LOGGER = logging.getLogger(__name__)
+_MAX_ROW_ID = 2**63 - 1
+EventId = Annotated[int, PathParam(ge=1, le=_MAX_ROW_ID)]
 
 
 class EventCreate(BaseModel):
@@ -257,7 +260,7 @@ def _build_app(
     @app.get("/api/events")
     def list_events(
         limit: int = 100,
-        before_id: Annotated[int | None, Query(ge=1)] = None,
+        before_id: Annotated[int | None, Query(ge=1, le=_MAX_ROW_ID)] = None,
         risk: Literal["low", "medium", "high"] | None = None,
         agent: Annotated[str | None, Query(max_length=120)] = None,
         action: Annotated[str | None, Query(max_length=120)] = None,
@@ -283,14 +286,14 @@ def _build_app(
         return app.state.store.append(event.model_dump())
 
     @app.get("/api/events/{event_id}")
-    def get_event(event_id: int) -> dict[str, Any]:
+    def get_event(event_id: EventId) -> dict[str, Any]:
         event: dict[str, Any] | None = app.state.store.get_event(event_id)
         if event is None:
             raise HTTPException(status_code=404, detail="Event not found")
         return event
 
     @app.get("/api/events/{event_id}/diff")
-    def get_event_diff(event_id: int) -> dict[str, Any]:
+    def get_event_diff(event_id: EventId) -> dict[str, Any]:
         if not show_diffs:
             raise HTTPException(
                 status_code=403,
@@ -317,7 +320,7 @@ def _build_app(
         return result
 
     @app.post("/api/events/{event_id}/rollback")
-    def rollback_event(event_id: int, request: RollbackRequest) -> dict[str, Any]:
+    def rollback_event(event_id: EventId, request: RollbackRequest) -> dict[str, Any]:
         if not request.confirm:
             raise HTTPException(
                 status_code=400, detail="Explicit confirmation is required"

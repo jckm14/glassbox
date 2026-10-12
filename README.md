@@ -130,7 +130,7 @@ glassbox hook claude-code --print-config
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "Bash",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
         "hooks": [{ "type": "command", "command": "glassbox hook claude-code", "timeout": 15 }]
       }
     ]
@@ -147,7 +147,7 @@ glassbox hook claude-code --print-config
 
 The hook works with or without a running server: it writes to the ledger directly, or hands the receipt to `glassbox serve` when the server owns the ledger. It never blocks or fails a tool call; problems are printed to stderr. The ledger defaults to `~/.glassbox`; pass `--data-dir` (or set `GLASSBOX_DATA_DIR`) to keep one per project, and start `glassbox serve` with the same directory and the project as `--workspace`.
 
-Before an edit runs, the hook holds the file's current text in `<data-dir>/pending/` (a mode-`0700` directory) until the edit finishes. Content is recorded only for UTF-8 files up to 1 MB inside the workspace; other files get a receipt without content.
+Before an edit runs, the hook holds the file's current text, unencrypted, in `<data-dir>/pending/` (a mode-`0700` directory). It is removed when the edit succeeds or fails; text left behind by an edit that never ran, such as one you denied, is removed by the next edit hook once it is an hour old. Content is recorded only for UTF-8 files up to 1 MB inside the workspace; other files get a receipt without content.
 
 ## Command line
 
@@ -209,7 +209,7 @@ Glassbox accepts arbitrary action names and labels each receipt from the words i
 | Medium | Other shell commands; file writes, creations, and deletions inside the workspace; configuration changes; any action Glassbox does not recognize |
 | Low | Read, search, and list actions; shell commands made only of read-only programs such as `ls`, `grep`, or `git status` |
 
-For a shell action, the command is read from `metadata.command` when present, otherwise from `target`. Labels are a triage aid based on pattern matching, not a sandbox: a command Glassbox labels medium can still be destructive.
+For a shell action, the command is read from `metadata.command` when present, otherwise from `target`. Labels are a triage aid based on pattern matching, not a sandbox: a command Glassbox labels medium can still be destructive. Commands longer than 20,000 characters, or with a single statement longer than 2,000, are labeled high without analysis.
 
 ### Reversible actions
 
@@ -219,7 +219,7 @@ For a shell action, the command is read from `metadata.command` when present, ot
 | `file.create` | `after_text` only | Moves the created file into a private recovery directory |
 | `file.delete` | `before_text` only | Recreates the file, only if nothing exists at that path |
 
-Glassbox encrypts `before_text` for restoration, hashes `after_text` for conflict detection, and stores an encrypted diff. A recreated file gets mode `0600` unless the receipt's `metadata.mode` records the original permission bits (for example `"0644"`). If `metadata.workspace` is present, rollback refuses to run in any other workspace.
+Glassbox encrypts `before_text` for restoration, hashes `after_text` for conflict detection, and stores an encrypted diff. A recreated file gets mode `0600` unless the receipt's `metadata.mode` records the original permission bits (for example `"0644"`); group and other write bits and setuid bits are never restored. If `metadata.workspace` is present, rollback refuses to run in any other workspace.
 
 The agent name `glassbox` and the actions `file.rollback` and `snapshot.prune` are reserved for receipts Glassbox writes itself; the API and CLI reject submissions that use them.
 
@@ -286,7 +286,7 @@ Rolling back a `file.create` or `file.delete` receipt applies the same chain, wo
 - The dashboard has no CDN, analytics, or external font requests.
 - A restrictive Content Security Policy, frame protection, MIME sniffing protection, and no-referrer policy are applied to every response.
 - The data directory must be an owned mode-`0700` real directory; existing symlinks or differently protected directories are rejected without chmodding their referents. The signing key and published database are owned, single-link mode-`0600` regular files pinned by descriptors. Receipt readers and writers share a store lock so publication cannot close or recycle a descriptor while a reader is using it. Receipt writes occur in a serialized in-memory SQLite copy, are serialized into an unnamed mode-`0600` file, and publish a finalized database snapshot with an atomic exchange. The previously published database inode is never mutated, so a hard link introduced at the commit boundary remains an unchanged historical snapshot rather than an alias Glassbox writes through.
-- Before snapshots and diffs are encrypted at rest with a key derived from the local receipt key. Each is stored as a mode-`0600` file named by the SHA-256 of its ciphertext in a pinned mode-`0700` `snapshots/` directory; files are created exclusively and never rewritten, and a file that is missing, relinked, re-permissioned, or altered fails verification. Only a signed `snapshot.prune` receipt written by Glassbox excuses a missing file.
+- Before snapshots and diffs are encrypted at rest with a key derived from the local receipt key. Each is stored as a mode-`0600` file named by the SHA-256 of its ciphertext in a pinned mode-`0700` `snapshots/` directory; files are created exclusively and never rewritten, and a file that is missing, relinked, re-permissioned, or altered fails verification. Only a signed `snapshot.prune` receipt written by Glassbox excuses a missing file. Prune and rollback receipts name the receipts they affect by receipt hash, not row ID, so renumbering rows cannot move them onto another receipt.
 - Receipt responses expose hashes, not raw before/after content. Diffs are served only when the server is started with `--show-diffs`, and common credential patterns are redacted from them.
 - Common credential patterns are redacted before summaries, targets, and metadata are stored. A file receipt whose target was changed by redaction is not reversible.
 - Only one process writes to a data directory at a time. The server holds an advisory lock on `writer.lock` for its lifetime; one-shot commands take it briefly or send the write to the server. Read commands open the ledger read-only and never republish it.

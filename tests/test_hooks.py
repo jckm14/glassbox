@@ -404,3 +404,50 @@ def test_writes_are_handed_to_the_server_that_owns_the_ledger(
         "file.write",
     ]
     assert app.state.store.verify()["valid"] is True
+
+
+def test_fifo_paths_do_not_hang_the_hook(project):
+    workspace, data_dir = project
+    fifo = workspace / "pipe"
+    os.mkfifo(fifo)
+
+    before = _run(
+        _payload("PreToolUse", "Write", {"file_path": str(fifo)}), workspace, data_dir
+    )
+    after = _run(
+        _payload("PostToolUse", "Write", {"file_path": str(fifo)}), workspace, data_dir
+    )
+
+    assert before == []
+    assert "after_text" not in after[0]
+
+
+def test_failed_edit_clears_the_text_held_for_it(project):
+    workspace, data_dir = project
+    target = workspace / "config.txt"
+    target.write_text("API_KEY=plaintext-secret-value\n", encoding="utf-8")
+    tool_input = {"file_path": str(target)}
+
+    _run(_payload("PreToolUse", "Edit", tool_input), workspace, data_dir)
+    assert len(list((data_dir / "pending").iterdir())) == 1
+    recorded = _run(
+        _payload("PostToolUseFailure", "Edit", tool_input), workspace, data_dir
+    )
+
+    assert recorded == []
+    assert list((data_dir / "pending").iterdir()) == []
+    failure = hook_settings()["hooks"]["PostToolUseFailure"][0]["matcher"]
+    assert "Edit" in failure and "Write" in failure
+
+
+def test_long_multibyte_command_still_fits_the_server_metadata_limit(project):
+    workspace, data_dir = project
+    command = "rm -rf build # " + "\U0001f600" * 17_000
+
+    recorded = _run(
+        _payload("PostToolUse", "Bash", {"command": command}), workspace, data_dir
+    )
+
+    encoded = json.dumps(recorded[0]["metadata"], ensure_ascii=False).encode("utf-8")
+    assert len(encoded) < 65_536
+    assert recorded[0]["metadata"]["command"].startswith("rm -rf build")

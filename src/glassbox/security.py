@@ -18,8 +18,13 @@ _TOKEN_SHAPES = (
     re.compile(r"\bxox[abeoprs]-[A-Za-z0-9-]{10,}\b"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
 )
-_AUTH_SCHEME = re.compile(r"(?i)\b((?:Bearer|Basic)\s+)[A-Za-z0-9._~+/=-]{12,}")
-_URL_USERINFO = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^\s/:@]+:)[^\s/@]+@")
+_AUTH_SCHEME = re.compile(r"(?i)\b(Bearer\s+)[A-Za-z0-9._~+/=-]{12,}")
+# "Basic" is also an ordinary word, so require something that looks encoded.
+_BASIC_AUTH = re.compile(
+    r"(?i)\b(Basic\s+)(?=[A-Za-z0-9+/]*[0-9+/=])[A-Za-z0-9+/]{16,}={0,2}"
+)
+# Anchored on the literal "://" so matching stays linear on long inputs.
+_URL_USERINFO = re.compile(r"(://[^\s/:@]+:)[^\s/@]+@")
 _SECRET_FLAG = re.compile(
     r"(?i)(--?(?:api[_-]?key|access[_-]?token|auth[_-]?token|token|password|passwd|secret|client[_-]?secret))(\s+|=)(?!\[REDACTED\])[^\s,;]+"
 )
@@ -37,6 +42,7 @@ def redact_text(value: str) -> str:
     for pattern in _TOKEN_SHAPES:
         redacted = pattern.sub(_REDACTED, redacted)
     redacted = _AUTH_SCHEME.sub(rf"\1{_REDACTED}", redacted)
+    redacted = _BASIC_AUTH.sub(rf"\1{_REDACTED}", redacted)
     redacted = _URL_USERINFO.sub(rf"\1{_REDACTED}@", redacted)
     redacted = _SECRET_FLAG.sub(
         lambda m: f"{m.group(1)}{m.group(2)}{_REDACTED}", redacted
@@ -160,7 +166,7 @@ _READ_WORDS = frozenset(
 
 _SENSITIVE_PATH = re.compile(
     r"""(?ix)
-    (?:^|[/\\\s'"=])\.env(?:\.[\w.-]+)?(?:$|[\s'"])
+    (?:^|[/\\\s'"=@])\.env(?:\.[\w.-]+)?(?:$|[\s'";|&)<>])
     | (?:^|[/\\~])\.ssh(?:[/\\]|$)
     | \bid_(?:rsa|dsa|ecdsa|ed25519)\b
     | \bauthorized_keys\b
@@ -168,10 +174,10 @@ _SENSITIVE_PATH = re.compile(
     | \.kube[/\\]config
     | (?:^|[/\\~\s])\.(?:npmrc|pypirc|netrc|git-credentials)\b
     | \.gnupg(?:[/\\]|$)
-    | \.(?:pem|p12|pfx|keystore|jks)(?:$|[\s'"])
+    | \.(?:pem|p12|pfx|keystore|jks)(?:$|[\s'";|&)<>])
     | \.git[/\\](?:hooks[/\\]|config\b)
     | /etc/(?:passwd|shadow|sudoers|ssh/)
-    | (?:^|[/\\\s'"])(?:secrets?|credentials?)(?:\.\w+)?(?:$|[/\\\s'"])
+    | (?:^|[/\\\s'"])(?:secrets?|credentials?)(?:\.\w+)?(?:$|[/\\\s'";|&)<>])
     """
 )
 _SYSTEM_PATH = re.compile(
@@ -181,10 +187,6 @@ _SYSTEM_PATH = re.compile(
 _SHELL_HIGH: tuple[tuple[re.Pattern[str], str], ...] = tuple(
     (re.compile(pattern, re.IGNORECASE), reason)
     for pattern, reason in (
-        (
-            r"\brm\s+(?:-{1,2}[\w-]+\s+)*-(?:[a-z]*[rf][a-z]*|-recursive|-force)\b",
-            "recursive or forced delete",
-        ),
         (r"\b(?:sudo|doas)\b|\bsu\s+-", "runs with elevated privileges"),
         (
             r"\b(?:curl|wget)\b[^;&]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b",
@@ -267,6 +269,9 @@ _SHELL_SUBSTITUTION = re.compile(r"`|\$\(|<\(")
 _SHELL_REDIRECT = re.compile(r">|<<")
 _SHELL_SPLIT = re.compile(r"\|\||&&|[;|\n]")
 _ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+# Programs that only read, whatever flags they are given. Programs with a
+# flag that writes a file or runs another program (sort -o, uniq, rg --pre,
+# less, tree -o, date -s, hostname NAME) are deliberately absent.
 _READ_ONLY_COMMANDS = frozenset(
     {
         "ls",
@@ -279,20 +284,13 @@ _READ_ONLY_COMMANDS = frozenset(
         "grep",
         "egrep",
         "fgrep",
-        "rg",
         "find",
         "which",
         "whoami",
-        "date",
         "uname",
-        "file",
         "stat",
         "du",
         "df",
-        "tree",
-        "diff",
-        "sort",
-        "uniq",
         "cut",
         "tr",
         "basename",
@@ -300,12 +298,9 @@ _READ_ONLY_COMMANDS = frozenset(
         "realpath",
         "readlink",
         "id",
-        "hostname",
         "ps",
         "true",
         "test",
-        "less",
-        "more",
         "nl",
         "column",
         "jq",
@@ -326,6 +321,16 @@ _READ_ONLY_GIT = frozenset(
     }
 )
 _FIND_MUTATIONS = re.compile(r"\s-(?:delete|exec|execdir|ok|okdir|fprint\w*|fls)\b")
+_GIT_ESCAPES = ("--output", "--ext-diff", "--textconv", "--exec-path", "-c", "-C")
+_RM_FLAG = re.compile(
+    r"-[A-Za-z]*[rRf][A-Za-z]*|--recursive|--force|--no-preserve-root"
+)
+_WORD_BREAK = re.compile(r"[\s|()`{}$]+")
+_COMMAND_SEPARATOR = re.compile(r"\|\||&&|[;\n]")
+# Longer inputs are labeled high without analysis: they cannot be classified
+# in bounded time, and an unreadable command deserves attention anyway.
+_MAX_COMMAND_CHARS = 20_000
+_MAX_STATEMENT_CHARS = 2_000
 
 
 def _action_words(action: str) -> frozenset[str]:
@@ -338,16 +343,40 @@ def _segment_is_read_only(segment: str) -> bool:
         return False
     command = words[0]
     if command == "git":
-        return len(words) > 1 and words[1] in _READ_ONLY_GIT
+        return (
+            len(words) > 1
+            and words[1] in _READ_ONLY_GIT
+            and not any(word.startswith(_GIT_ESCAPES) for word in words[2:])
+        )
     if command == "find":
         return not _FIND_MUTATIONS.search(segment)
     return command in _READ_ONLY_COMMANDS
 
 
+def _deletes_recursively(statement: str) -> bool:
+    # Plain word scanning: a regular expression over repeated flags is easy to
+    # make exponential, and this text is chosen by the agent being recorded.
+    words = _WORD_BREAK.split(statement)
+    for index, word in enumerate(words):
+        if (word == "rm" or word.endswith("/rm")) and any(
+            _RM_FLAG.fullmatch(argument) for argument in words[index + 1 :]
+        ):
+            return True
+    return False
+
+
 def _assess_command(command: str) -> tuple[str, str]:
-    for pattern, reason in _SHELL_HIGH:
-        if pattern.search(command):
-            return "high", f"Command {reason}"
+    if len(command) > _MAX_COMMAND_CHARS:
+        return "high", "Command is too long to classify"
+    # Patterns run per statement so their cost stays bounded on long input.
+    for statement in _COMMAND_SEPARATOR.split(command):
+        if len(statement) > _MAX_STATEMENT_CHARS:
+            return "high", "Command is too long to classify"
+        if _deletes_recursively(statement):
+            return "high", "Command recursive or forced delete"
+        for pattern, reason in _SHELL_HIGH:
+            if pattern.search(statement):
+                return "high", f"Command {reason}"
     if _SENSITIVE_PATH.search(command):
         return "high", "Command touches credential or secret material"
     if _SHELL_SUBSTITUTION.search(command):

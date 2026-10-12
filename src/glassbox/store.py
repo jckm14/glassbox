@@ -450,6 +450,10 @@ class EventStore:
 
     def _write_blob(self, ciphertext: bytes) -> str:
         """Store one encrypted blob under its SHA-256 name without overwriting."""
+        if len(ciphertext) > _MAX_BLOB_BYTES:
+            # Reads refuse larger files, so storing one would make the ledger
+            # permanently fail verification.
+            raise ValueError("Recorded text is too large to store as a snapshot")
         digest = hashlib.sha256(ciphertext).hexdigest()
         directory_fd = self._validate_snapshot_dir()
         descriptor = os.open(
@@ -753,7 +757,7 @@ class EventStore:
             raise RollbackError(
                 "Rollback target is outside the configured workspace", 400
             )
-        if any(part in {"", ".", ".."} for part in relative.parts):
+        if any(part in {"", ".", ".."} or "\x00" in part for part in relative.parts):
             raise RollbackError(
                 "Rollback target is outside the configured workspace", 400
             )
@@ -852,7 +856,12 @@ class EventStore:
     def _open_regular_at(parent_fd: int, name: str, flags: int = os.O_RDONLY) -> int:
         descriptor = os.open(
             name,
-            flags | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+            # Non-blocking so a FIFO at the name fails the regular-file check
+            # below instead of blocking the open.
+            flags
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_CLOEXEC", 0),
             dir_fd=parent_fd,
         )
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
@@ -1523,6 +1532,7 @@ class EventStore:
                         "after_text": restored_text,
                         "metadata": {
                             "rolled_back_event_id": event_id,
+                            "rolled_back_receipt_hash": row["receipt_hash"],
                             "rollback_operation_id": rollback_operation_id,
                             "displaced_path": str(recovery_path),
                         },
@@ -1657,10 +1667,12 @@ class EventStore:
         except (TypeError, ValueError):
             return 0o600
         value = metadata.get("mode") if isinstance(metadata, dict) else None
+        # Never recreate a file writable by group or others on the say-so of
+        # submitted metadata.
         if type(value) is int and 0 <= value <= 0o7777:
-            return value & 0o777
+            return value & 0o755
         if isinstance(value, str) and re.fullmatch(r"(?:0o?)?[0-7]{3,4}", value):
-            return int(value.removeprefix("0o"), 8) & 0o777
+            return int(value.removeprefix("0o"), 8) & 0o755
         return 0o600
 
     def _rollback_create(
@@ -1784,6 +1796,7 @@ class EventStore:
                     "after_text": None,
                     "metadata": {
                         "rolled_back_event_id": event_id,
+                        "rolled_back_receipt_hash": row["receipt_hash"],
                         "rollback_operation_id": operation_id,
                         "rollback_kind": "remove_created_file",
                         "displaced_path": str(recovery_path),
@@ -1947,6 +1960,7 @@ class EventStore:
                     "after_text": restored_text,
                     "metadata": {
                         "rolled_back_event_id": event_id,
+                        "rolled_back_receipt_hash": row["receipt_hash"],
                         "rollback_operation_id": operation_id,
                         "rollback_kind": "restore_deleted_file",
                     },
@@ -1982,32 +1996,51 @@ class EventStore:
     # --- Reading ------------------------------------------------------------------
 
     @staticmethod
-    def _internal_state(rows: Any) -> tuple[set[int], dict[int, int]]:
-        """Derive pruned and rolled-back receipt IDs from Glassbox's own receipts."""
+    def _internal_references(row: Any) -> tuple[str, list[str]]:
+        """Receipt hashes that one of Glassbox's own receipts refers to."""
+        if row["agent"] != INTERNAL_AGENT:
+            return "", []
+        try:
+            metadata = json.loads(row["metadata_json"])
+        except (TypeError, ValueError):
+            return "", []
+        if not isinstance(metadata, dict):
+            return "", []
+        if row["action"] == PRUNE_ACTION:
+            hashes = metadata.get("pruned_receipt_hashes")
+            if isinstance(hashes, list):
+                return PRUNE_ACTION, [
+                    value for value in hashes if isinstance(value, str)
+                ]
+        elif row["action"] == ROLLBACK_ACTION:
+            original = metadata.get("rolled_back_receipt_hash")
+            if isinstance(original, str):
+                return ROLLBACK_ACTION, [original]
+        return "", []
+
+    @classmethod
+    def _internal_state(
+        cls, rows: Any, id_by_hash: dict[str, int]
+    ) -> tuple[set[int], dict[int, int]]:
+        """Derive pruned and rolled-back receipt IDs from Glassbox's own receipts.
+
+        Receipts are named by their authenticated hash, never by row ID: row
+        IDs are not covered by the HMAC, so a renumbered database must not be
+        able to move a prune or rollback statement onto a different receipt.
+        """
         pruned: set[int] = set()
         rolled_back: dict[int, int] = {}
         for row in rows:
-            if row["agent"] != INTERNAL_AGENT:
-                continue
-            try:
-                metadata = json.loads(row["metadata_json"])
-            except (TypeError, ValueError):
-                continue
-            if not isinstance(metadata, dict):
-                continue
+            kind, hashes = cls._internal_references(row)
             receipt_id = row["id"]
-            if row["action"] == PRUNE_ACTION:
-                identifiers = metadata.get("pruned_event_ids")
-                if isinstance(identifiers, list):
-                    pruned.update(
-                        value
-                        for value in identifiers
-                        if type(value) is int and value < receipt_id
-                    )
-            elif row["action"] == ROLLBACK_ACTION:
-                original = metadata.get("rolled_back_event_id")
-                if type(original) is int and original < receipt_id:
-                    rolled_back[original] = receipt_id
+            for value in hashes:
+                target = id_by_hash.get(value)
+                if target is None or target >= receipt_id:
+                    continue
+                if kind == PRUNE_ACTION:
+                    pruned.add(target)
+                else:
+                    rolled_back[target] = receipt_id
         return pruned, rolled_back
 
     def _load_internal_state(
@@ -2023,7 +2056,19 @@ class EventStore:
             "WHERE agent = ? AND action IN (?, ?) ORDER BY id",
             (INTERNAL_AGENT, PRUNE_ACTION, ROLLBACK_ACTION),
         ).fetchall()
-        pruned, rolled_back = self._internal_state(rows)
+        referenced = sorted(
+            {value for row in rows for value in self._internal_references(row)[1]}
+        )
+        id_by_hash: dict[str, int] = {}
+        for offset in range(0, len(referenced), 500):
+            chunk = referenced[offset : offset + 500]
+            placeholders = ",".join("?" * len(chunk))
+            for found in conn.execute(
+                f"SELECT id, receipt_hash FROM events WHERE receipt_hash IN ({placeholders})",
+                chunk,
+            ):
+                id_by_hash[found["receipt_hash"]] = found["id"]
+        pruned, rolled_back = self._internal_state(rows, id_by_hash)
         conn.execute("CREATE TEMP TABLE pruned_events (id INTEGER PRIMARY KEY)")
         conn.execute("CREATE TEMP TABLE rolled_back_events (id INTEGER PRIMARY KEY)")
         conn.executemany(
@@ -2288,6 +2333,12 @@ class EventStore:
         }
 
     def verify(self, *, check_snapshots: bool = True) -> dict[str, Any]:
+        # Held throughout so a prune in this process cannot remove a snapshot
+        # between reading the receipts and checking their files.
+        with self._write_lock:
+            return self._verify(check_snapshots)
+
+    def _verify(self, check_snapshots: bool) -> dict[str, Any]:
         with self._connect() as conn:
             rows = conn.execute(
                 f"SELECT {self._select_columns(conn)}, before_ciphertext "
@@ -2351,7 +2402,9 @@ class EventStore:
 
         if check_snapshots:
             # A snapshot may be absent only when a signed prune receipt says so.
-            pruned, _ = self._internal_state(verified)
+            pruned, _ = self._internal_state(
+                verified, {row["receipt_hash"]: row["id"] for row in verified}
+            )
             for row in verified:
                 if row["id"] in pruned:
                     continue
@@ -2414,7 +2467,8 @@ class EventStore:
             with self._connect() as conn:
                 self._load_internal_state(conn)
                 rows = conn.execute(
-                    "SELECT id, created_at, snapshot_sha256, diff_sha256 FROM events "
+                    "SELECT id, created_at, snapshot_sha256, diff_sha256, receipt_hash "
+                    "FROM events "
                     "WHERE (snapshot_sha256 IS NOT NULL OR diff_sha256 IS NOT NULL) "
                     "AND before_ciphertext IS NULL "
                     "AND id NOT IN (SELECT id FROM pruned_events) ORDER BY id DESC"
@@ -2440,7 +2494,12 @@ class EventStore:
                             f"Pruned stored content for receipts "
                             f"#{identifiers[0]}–#{identifiers[-1]}"
                         ),
-                        "metadata": {"pruned_event_ids": identifiers},
+                        "metadata": {
+                            "pruned_event_ids": identifiers,
+                            "pruned_receipt_hashes": [
+                                row["receipt_hash"] for row in chunk
+                            ],
+                        },
                     }
                 )
                 receipt_ids.append(receipt["id"])
