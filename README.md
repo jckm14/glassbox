@@ -183,6 +183,10 @@ GlassboxClient().record(
 
 ## Record an action
 
+Want a runnable tool example first? [Try the file-tool integration demo](examples/README.md)
+to verify a successful rollback and a refused rollback after a newer edit, using
+disposable files and no model credentials.
+
 ```bash
 curl -X POST http://127.0.0.1:8765/api/events \
   -H 'Content-Type: application/json' \
