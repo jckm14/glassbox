@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://github.com/jckm14/glassbox/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/jckm14/glassbox/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/jckm14/glassbox/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/jckm14/glassbox"></a>
+  <a href="https://pypi.org/project/glassbox-agent/"><img alt="PyPI version" src="https://img.shields.io/pypi/v/glassbox-agent"></a>
   <a href="https://www.python.org/"><img alt="Python 3.11 or newer" src="https://img.shields.io/badge/python-3.11%2B-3776ab"></a>
   <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/license-Apache--2.0-10b981"></a>
 </p>
@@ -71,6 +72,15 @@ AI agents can edit files, execute commands, and communicate on a user's behalf. 
 - Safe four-event demo timeline
 
 ## Quick start
+
+Install the released package on Linux with Python 3.11 or newer:
+
+```bash
+pip install glassbox-agent    # or: uv tool install glassbox-agent
+glassbox --help
+```
+
+Or work from a clone, as the rest of this section does:
 
 ```bash
 git clone https://github.com/jckm14/glassbox.git
