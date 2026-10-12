@@ -4,6 +4,8 @@ This directory contains source material for introducing Glassbox to agent develo
 
 ## Assets
 
+- [`FIRST-FIVE-TESTERS.md`](FIRST-FIVE-TESTERS.md) — tester invitation, 30-second recording script, and sponsorship follow-up
+- [`../../examples/README.md`](../../examples/README.md) — runnable file-tool integration pattern with rollback and conflict verification
 - [`../assets/launch/dashboard.png`](../assets/launch/dashboard.png) — clean dashboard screenshot generated from synthetic demo data
 - [`../assets/launch/walkthrough.gif`](../assets/launch/walkthrough.gif) — before/after walkthrough of a real guarded rollback
 - [`../assets/launch/social-card.png`](../assets/launch/social-card.png) — 1280×640 sharing card for posts and repository social preview
