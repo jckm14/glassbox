@@ -84,3 +84,29 @@ dialog { width: min(620px, calc(100vw - 32px)); color: var(--text); background: 
 .toast { position: fixed; right: 24px; bottom: 24px; background: #1a1b1d; border: 1px solid var(--border); color: var(--secondary); border-radius: 7px; padding: 10px 14px; font-size: 12px; opacity: 0; transform: translateY(8px); pointer-events: none; transition: .2s; box-shadow: 0 10px 40px rgba(0,0,0,.35); }.toast.show { opacity: 1; transform: translateY(0); }
 @media (max-width: 900px) { .shell { grid-template-columns: 1fr; }.sidebar { position: static; width: 100%; height: auto; flex-direction: row; align-items: center; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--border-soft); }.brand { padding: 0; margin-right: auto; }.sidebar nav { display: flex; }.sidebar-footer { display: none; }.topbar { top: 53px; padding: 0 20px; }.content { padding: 38px 20px 60px; }.metrics { grid-template-columns: repeat(2, 1fr); }.metric:nth-child(2) { border-right: 0; }.metric:nth-child(-n+2) { border-bottom: 1px solid var(--border-soft); }.integration { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .nav-item { font-size: 0; gap: 0; }.topbar { display: none; }.hero { align-items: flex-start; flex-direction: column; }.metrics { grid-template-columns: 1fr 1fr; }.panel-header { align-items: flex-start; flex-direction: column; }.controls { width: 100%; }.search { flex: 1; }.search input { width: 100%; }.receipt { grid-template-columns: 74px 1fr; }.receipt-agent { display: none; }.integration { padding: 22px; } }
+.controls { flex-wrap: wrap; justify-content: flex-end; }
+select[hidden], .timeline-footer[hidden], #dialog-diff[hidden] { display: none; }
+select { max-width: 190px; text-overflow: ellipsis; }
+.sidebar-footer #live-status { color: var(--quiet); }
+.sidebar-footer #live-status.stale { color: var(--amber); }
+.session-row { display: flex; align-items: center; gap: 10px; padding: 9px 20px; border-bottom: 1px solid var(--border-soft); background: rgba(255,255,255,.018); color: var(--muted); font: 500 10px "JetBrains Mono", monospace; letter-spacing: .06em; text-transform: uppercase; }
+.session-row button { margin-left: auto; border: 0; background: none; color: var(--accent); font: inherit; letter-spacing: inherit; text-transform: inherit; padding: 0; }
+.session-row button:hover { color: #a5a4ff; }
+.state-chip { color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 3px 7px; font: 500 9px "JetBrains Mono", monospace; }
+.risk-reason { color: var(--quiet); font-size: 11px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-footer { padding: 14px 20px; border-top: 1px solid var(--border-soft); text-align: center; }
+.integration p code { font: 400 11px "JetBrains Mono", monospace; color: var(--secondary); background: rgba(255,255,255,.05); padding: 1px 5px; border-radius: 4px; }
+dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
+#dialog-content, #dialog-diff { overflow-wrap: anywhere; }
+#dialog-diff { padding: 0 24px 22px; }
+#dialog-diff h3 { margin: 0 0 10px; font-size: 12px; font-weight: 500; color: var(--quiet); display: flex; gap: 10px; align-items: baseline; }
+#dialog-diff h3 .added { color: #86efac; }#dialog-diff h3 .removed { color: #fca5a5; }
+.diff-note { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 0; }
+.diff-note code { font: 400 11px "JetBrains Mono", monospace; color: var(--secondary); }
+.diff { margin: 0; padding: 10px 0; max-height: 340px; overflow: auto; background: #0b0c0d; border: 1px solid var(--border-soft); border-radius: 8px; color: var(--secondary); font: 400 11px/1.65 "JetBrains Mono", monospace; }
+.diff span { display: block; padding: 0 14px; white-space: pre; min-width: max-content; }
+.diff .add { color: #86efac; background: rgba(16,185,129,.08); }
+.diff .del { color: #fca5a5; background: rgba(248,113,113,.08); }
+.diff .hunk { color: #a5a4ff; }
+.diff .file { color: var(--quiet); }
+.detail-grid pre { padding: 0; color: var(--secondary); font: 400 11px/1.6 "JetBrains Mono", monospace; white-space: pre-wrap; }

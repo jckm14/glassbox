@@ -71,3 +71,228 @@ def test_serve_refuses_non_loopback_bind_addresses(tmp_path, monkeypatch, host):
         )
 
     assert exc_info.value.code == 2
+
+
+def _record(data_dir, *extra):
+    return main(
+        [
+            "record",
+            "--data-dir",
+            str(data_dir),
+            "--agent",
+            "cli-agent",
+            "--summary",
+            "Recorded from the command line",
+            *extra,
+        ]
+    )
+
+
+def test_record_log_show_verify_head_and_export_round_trip(tmp_path, capsys):
+    import json
+
+    data_dir = tmp_path / "data"
+    before = tmp_path / "before.txt"
+    after = tmp_path / "after.txt"
+    before.write_text("old line\n", encoding="utf-8")
+    after.write_text("new line\n", encoding="utf-8")
+
+    assert (
+        _record(
+            data_dir,
+            "--action",
+            "file.write",
+            "--target",
+            "notes.txt",
+            "--before-file",
+            str(before),
+            "--after-file",
+            str(after),
+            "--metadata",
+            '{"session_id": "s1"}',
+        )
+        == 0
+    )
+    assert _record(data_dir, "--action", "shell.exec", "--target", "rm -rf build") == 0
+    capsys.readouterr()
+
+    assert main(["log", "--data-dir", str(data_dir), "--risk", "high"]) == 0
+    log = capsys.readouterr().out
+    assert "rm -rf build" in log and "notes.txt" not in log
+    assert "1 of 1 matching receipts" in log
+
+    assert main(["log", "--data-dir", str(data_dir), "--json", "--reversible"]) == 0
+    assert [e["id"] for e in json.loads(capsys.readouterr().out)["events"]] == [1]
+
+    assert main(["show", "1", "--diff", "--data-dir", str(data_dir)]) == 0
+    shown = capsys.readouterr().out
+    assert "-old line" in shown and "+new line" in shown and "eligible" in shown
+    assert main(["show", "9", "--data-dir", str(data_dir)]) == 1
+
+    assert main(["head", "--data-dir", str(data_dir), "--json"]) == 0
+    head = json.loads(capsys.readouterr().out)
+    assert head["event_count"] == 2
+
+    assert main(["verify", "--data-dir", str(data_dir)]) == 0
+    assert "OK: 2 receipts verified" in capsys.readouterr().out
+    assert (
+        main(
+            ["verify", "--data-dir", str(data_dir), "--expect-head", head["head_hash"]]
+        )
+        == 0
+    )
+    assert main(["verify", "--data-dir", str(data_dir), "--expect-head", "f" * 64]) == 1
+    capsys.readouterr()
+
+    output = tmp_path / "export.json"
+    assert main(["export", "--data-dir", str(data_dir), "-o", str(output)]) == 0
+    exported = json.loads(output.read_text(encoding="utf-8"))
+    assert [event["id"] for event in exported["events"]] == [1, 2]
+    assert exported["head"]["head_hash"] == head["head_hash"]
+
+
+def test_verify_exits_nonzero_for_a_tampered_ledger(tmp_path, capsys):
+    import sqlite3
+
+    data_dir = tmp_path / "data"
+    _record(data_dir, "--action", "tool.read", "--target", "a")
+    with sqlite3.connect(data_dir / "glassbox.db") as conn:
+        conn.execute("UPDATE events SET summary = 'Altered'")
+
+    assert main(["verify", "--data-dir", str(data_dir)]) == 1
+    assert "BROKEN" in capsys.readouterr().out
+
+
+def test_read_commands_report_a_missing_ledger_without_creating_it(tmp_path, capsys):
+    data_dir = tmp_path / "nothing-here"
+
+    assert main(["log", "--data-dir", str(data_dir)]) == 1
+    assert main(["verify", "--data-dir", str(data_dir)]) == 1
+    assert "No Glassbox ledger" in capsys.readouterr().err
+    assert not data_dir.exists()
+
+
+def test_record_rejects_reserved_names_and_bad_input(tmp_path, capsys):
+    data_dir = tmp_path / "data"
+
+    assert (
+        main(
+            [
+                "record",
+                "--data-dir",
+                str(data_dir),
+                "--agent",
+                "glassbox",
+                "--action",
+                "tool.read",
+                "--target",
+                "x",
+                "--summary",
+                "Impersonation",
+            ]
+        )
+        == 1
+    )
+    assert _record(data_dir, "--action", "snapshot.prune", "--target", "x") == 1
+    assert (
+        _record(data_dir, "--action", "tool.read", "--target", "x", "--metadata", "[1]")
+        == 1
+    )
+    assert "reserved" in capsys.readouterr().err
+
+
+def test_rollback_prompts_unless_confirmed(tmp_path, monkeypatch, capsys):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    target = workspace / "notes.txt"
+    target.write_text("new\n", encoding="utf-8")
+    data_dir = tmp_path / "data"
+    _record(
+        data_dir,
+        "--action",
+        "file.write",
+        "--target",
+        "notes.txt",
+        "--before-text",
+        "old\n",
+        "--after-text",
+        "new\n",
+    )
+    arguments = [
+        "rollback",
+        "1",
+        "--data-dir",
+        str(data_dir),
+        "--workspace",
+        str(workspace),
+    ]
+
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+    assert main(arguments) == 1
+    assert target.read_text(encoding="utf-8") == "new\n"
+
+    monkeypatch.setattr("builtins.input", lambda prompt: "y")
+    assert main(arguments) == 0
+    assert target.read_text(encoding="utf-8") == "old\n"
+
+    assert main([*arguments, "--yes"]) == 1
+    assert "Rollback refused" in capsys.readouterr().err
+
+
+def test_prune_command_frees_stored_content(tmp_path, capsys):
+    data_dir = tmp_path / "data"
+    for name in ("a.txt", "b.txt"):
+        _record(
+            data_dir,
+            "--action",
+            "file.write",
+            "--target",
+            name,
+            "--before-text",
+            "old",
+            "--after-text",
+            "new",
+        )
+
+    assert main(["prune", "--data-dir", str(data_dir)]) == 1
+    assert main(["prune", "--data-dir", str(data_dir), "--keep-last", "1"]) == 0
+    assert "Pruned stored content for 1 receipts" in capsys.readouterr().out
+    assert main(["verify", "--data-dir", str(data_dir)]) == 0
+
+
+def test_non_json_numbers_and_negative_retention_are_rejected(tmp_path, capsys):
+    data_dir = tmp_path / "data"
+    _record(
+        data_dir,
+        "--action",
+        "file.write",
+        "--target",
+        "a.txt",
+        "--before-text",
+        "old",
+        "--after-text",
+        "new",
+    )
+
+    for constant in ("NaN", "Infinity", "-Infinity"):
+        assert (
+            _record(
+                data_dir,
+                "--action",
+                "tool.read",
+                "--target",
+                "x",
+                "--metadata",
+                f'{{"score": {constant}}}',
+            )
+            == 1
+        )
+    assert "not valid JSON" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        main(["prune", "--data-dir", str(data_dir), "--older-than-days", "-1"])
+    with pytest.raises(SystemExit):
+        main(["serve", "--data-dir", str(data_dir), "--prune-older-than-days", "-1"])
+
+    assert main(["verify", "--data-dir", str(data_dir)]) == 0
+    assert "OK: 1 receipts verified" in capsys.readouterr().out
+    assert len(list((data_dir / "snapshots").iterdir())) == 2
