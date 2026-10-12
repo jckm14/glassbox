@@ -72,15 +72,6 @@ AI agents can edit files, execute commands, and communicate on a user's behalf. 
 
 ## Quick start
 
-Install the released package on Linux with Python 3.11 or newer:
-
-```bash
-pip install glassbox-agent    # or: uv tool install glassbox-agent
-glassbox --help
-```
-
-Or work from a clone, as the rest of this section does:
-
 ```bash
 git clone https://github.com/jckm14/glassbox.git
 cd glassbox
