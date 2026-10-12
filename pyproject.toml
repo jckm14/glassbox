@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "glassbox-agent"
-version = "0.1.1"
+dynamic = ["version"]
 description = "Local-first receipts and safe undo for AI agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -55,6 +55,9 @@ dev = [
 
 [project.scripts]
 glassbox = "glassbox.cli:main"
+
+[tool.hatch.version]
+path = "src/glassbox/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/glassbox"]

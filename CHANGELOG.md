@@ -4,6 +4,34 @@ All notable changes to Glassbox are documented in this file. The project follows
 
 ## [Unreleased]
 
+### Added
+
+- Claude Code hook (`glassbox hook claude-code`) that records file edits with before and after text, new files, and shell commands
+- CLI commands `record`, `log`, `show`, `verify`, `head`, `export`, `rollback`, and `prune`
+- Rollback for `file.create` (moves the file to a private recovery directory) and `file.delete` (recreates it only where nothing exists)
+- Encrypted diff stored with file receipts, shown by `glassbox show --diff` and, with `serve --show-diffs`, in the dashboard
+- Signed snapshot retention: `glassbox prune` and `serve --prune-older-than-days`
+- API paging and filters on `/api/events`, plus `/api/events/{id}`, `/api/events/{id}/diff`, `/api/stats`, `/api/head`, `/api/export`, and `/api/config`
+- Dashboard server-side search and filters, session grouping, automatic refresh, whole-ledger metrics, and receipt metadata
+- `glassbox.client.GlassboxClient`, a standard-library HTTP client
+- Chain-head anchoring with `glassbox head` and `glassbox verify --expect-head`
+
+### Changed
+
+- Risk labels now depend on what an action touches. Shell commands are high, medium, or low by content rather than always high, and unrecognized actions are medium rather than low. Each receipt records a `risk_reason`
+- Encrypted snapshots are stored as private files instead of database rows; existing ledgers are migrated when opened and still verify
+- `GET /api/events` also returns `total` and `next_before_id`
+- A receipt that was rolled back or pruned is no longer reported as reversible
+- The package version is defined once, in `src/glassbox/__init__.py`
+
+### Security
+
+- The receipt `target` is now redacted; previously a shell command line was stored as submitted
+- Redaction covers GitHub, AWS, and Slack tokens, JWTs, private key blocks, URL credentials, and `--password`-style flags
+- The `glassbox` agent name and the `file.rollback` and `snapshot.prune` actions are reserved, so integrations cannot forge them
+- A single-writer lock prevents two processes from publishing the same ledger
+- Rollback refuses a receipt recorded for a different workspace
+
 ## [0.1.1] - 2026-07-26
 
 ### Added
