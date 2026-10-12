@@ -29,9 +29,9 @@ Output is **not guaranteed byte-for-byte across different rendering toolchains**
 Keep public descriptions consistent with the current README and source:
 
 - Glassbox is an Apache-2.0, local-first receipt ledger for submitted agent actions.
-- Integrations post events to Glassbox; the alpha does not automatically intercept agent tools.
-- HMAC chaining provides local tamper evidence but not public-key attestation or suffix-deletion detection without an external anchor.
-- Rollback currently covers eligible UTF-8 regular-file writes on supported Linux filesystems.
+- Glassbox records what a hook or integration submits. The bundled Claude Code hook records file edits and shell commands; a file changed by a shell command gets a receipt without a snapshot.
+- HMAC chaining provides local tamper evidence but not public-key attestation. Suffix deletion is detectable only against a head hash saved elsewhere with `glassbox head`.
+- Rollback currently covers eligible UTF-8 regular-file edits, creations, and deletions on supported Linux filesystems.
 - Rollback uses live chain, content, path, inode, ownership, mode, ACL, workspace, and restore-candidate checks.
 - SQLite and arbitrary workspace filesystems do not share a crash-atomic transaction.
 - The bundled server is loopback-only and has no remote authentication.
