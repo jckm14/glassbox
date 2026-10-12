@@ -129,6 +129,7 @@ capture_dashboard() {
   timeout 30 chromium --headless --disable-gpu --hide-scrollbars \
     --disable-background-networking --disable-sync --metrics-recording-only \
     --no-first-run --lang=en-US --window-size=1280,1331 \
+    --virtual-time-budget=5000 \
     --screenshot="$output" "http://127.0.0.1:$PORT" >/dev/null 2>&1
   if [[ ! -s "$output" ]]; then
     printf 'Chromium did not create a fresh screenshot: %s\n' "$output" >&2
