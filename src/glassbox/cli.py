@@ -43,6 +43,22 @@ def _loopback_host(value: str) -> str:
     return value
 
 
+def _nonnegative_days(value: str) -> float:
+    try:
+        days = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a number of days") from None
+    if not days >= 0 or days == float("inf"):
+        raise argparse.ArgumentTypeError(
+            "must be a finite, non-negative number of days"
+        )
+    return days
+
+
+def _reject_json_constant(name: str) -> Any:
+    raise ValueError(f"{name} is not valid JSON")
+
+
 def _default_data_dir() -> Path:
     return Path(os.environ.get("GLASSBOX_DATA_DIR") or "~/.glassbox").expanduser()
 
@@ -92,7 +108,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     serve.add_argument(
         "--prune-older-than-days",
-        type=float,
+        type=_nonnegative_days,
         default=None,
         metavar="DAYS",
         help="Delete stored snapshots and diffs older than DAYS while serving",
@@ -174,7 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
         "prune", help="Delete stored snapshots and diffs; receipts are kept"
     )
     prune.add_argument("--keep-last", type=int, metavar="N")
-    prune.add_argument("--older-than-days", type=float, metavar="DAYS")
+    prune.add_argument("--older-than-days", type=_nonnegative_days, metavar="DAYS")
     _add_data_dir(prune)
     _add_json(prune)
 
@@ -445,7 +461,9 @@ def _command_record(args: argparse.Namespace) -> int:
     metadata: Any = {}
     if args.metadata is not None:
         try:
-            metadata = json.loads(args.metadata)
+            # NaN and Infinity are not JSON; a receipt holding one could not
+            # be exported or served.
+            metadata = json.loads(args.metadata, parse_constant=_reject_json_constant)
         except ValueError as exc:
             raise CommandError(f"--metadata is not valid JSON: {exc}") from exc
         if not isinstance(metadata, dict):

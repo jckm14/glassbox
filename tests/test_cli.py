@@ -258,3 +258,41 @@ def test_prune_command_frees_stored_content(tmp_path, capsys):
     assert main(["prune", "--data-dir", str(data_dir), "--keep-last", "1"]) == 0
     assert "Pruned stored content for 1 receipts" in capsys.readouterr().out
     assert main(["verify", "--data-dir", str(data_dir)]) == 0
+
+
+def test_non_json_numbers_and_negative_retention_are_rejected(tmp_path, capsys):
+    data_dir = tmp_path / "data"
+    _record(
+        data_dir,
+        "--action",
+        "file.write",
+        "--target",
+        "a.txt",
+        "--before-text",
+        "old",
+        "--after-text",
+        "new",
+    )
+
+    for constant in ("NaN", "Infinity", "-Infinity"):
+        assert (
+            _record(
+                data_dir,
+                "--action",
+                "tool.read",
+                "--target",
+                "x",
+                "--metadata",
+                f'{{"score": {constant}}}',
+            )
+            == 1
+        )
+    assert "not valid JSON" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        main(["prune", "--data-dir", str(data_dir), "--older-than-days", "-1"])
+    with pytest.raises(SystemExit):
+        main(["serve", "--data-dir", str(data_dir), "--prune-older-than-days", "-1"])
+
+    assert main(["verify", "--data-dir", str(data_dir)]) == 0
+    assert "OK: 1 receipts verified" in capsys.readouterr().out
+    assert len(list((data_dir / "snapshots").iterdir())) == 2

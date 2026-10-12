@@ -224,7 +224,10 @@ def test_prune_by_age_keeps_recent_snapshots(tmp_path):
     _write_event(store)
 
     assert store.prune_snapshots(older_than=timedelta(days=1))["pruned"] == 0
-    assert store.prune_snapshots(older_than=timedelta(seconds=-5))["pruned"] == 1
+    with pytest.raises(ValueError, match="older_than must not be negative"):
+        store.prune_snapshots(older_than=timedelta(seconds=-5))
+    assert len(_snapshot_files(store)) == 2
+    assert store.prune_snapshots(older_than=timedelta(0))["pruned"] == 1
     with pytest.raises(ValueError, match="keep_last"):
         store.prune_snapshots()
 
@@ -616,3 +619,31 @@ def test_out_of_range_identifiers_are_rejected_not_crashed(tmp_path):
         ]
 
     assert statuses == [422, 422, 422]
+
+
+def test_export_describes_a_single_ledger_state(tmp_path, monkeypatch):
+    store = EventStore(tmp_path / "data")
+    _write_event(store)
+    real_verify = store.verify
+    writer_error: list[BaseException] = []
+
+    def verify_while_another_thread_records(**kwargs):
+        import threading
+
+        def record():
+            try:
+                _write_event(store, "late.txt")
+            except BaseException as exc:  # noqa: BLE001 - reported by the assertion
+                writer_error.append(exc)
+
+        thread = threading.Thread(target=record)
+        thread.start()
+        thread.join(timeout=0.3)  # blocked: the export holds the store lock
+        return real_verify(**kwargs)
+
+    monkeypatch.setattr(store, "verify", verify_while_another_thread_records)
+    exported = store.export()
+
+    assert writer_error == []
+    assert len(exported["events"]) == exported["verification"]["event_count"] == 1
+    assert exported["head"]["head_hash"] == exported["events"][-1]["receipt_hash"]

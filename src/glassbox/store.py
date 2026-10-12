@@ -1233,7 +1233,7 @@ class EventStore:
         workspace_fd: int | None = None,
     ) -> dict[str, Any]:
         with self._connect() as conn:
-            pruned, _ = self._load_internal_state(conn)
+            pruned, rolled_back = self._load_internal_state(conn)
             row = conn.execute(
                 f"SELECT {self._select_columns(conn)}, before_ciphertext "
                 "FROM events WHERE id = ?",
@@ -1245,6 +1245,13 @@ class EventStore:
         if not verification["valid"]:
             raise RollbackError(
                 "Receipt chain verification failed; refusing rollback", 409
+            )
+        if event_id in rolled_back:
+            # The file may since have returned to the recorded content on
+            # purpose; an old receipt must not undo that newer work.
+            raise RollbackError(
+                f"This receipt was already rolled back by receipt #{rolled_back[event_id]}",
+                409,
             )
         if row["action"] not in {"file.write", "file.create", "file.delete"} or (
             not row["reversible"]
@@ -2426,22 +2433,25 @@ class EventStore:
 
     def export(self) -> dict[str, Any]:
         """Every receipt, oldest first, with the verification result and chain head."""
-        events: list[dict[str, Any]] = []
-        before_id: int | None = None
-        while True:
-            page = self.page_events(500, before_id=before_id)
-            events.extend(page["events"])
-            before_id = page["next_before_id"]
-            if before_id is None:
-                break
-        events.reverse()
-        return {
-            "exported_at": datetime.now(UTC).isoformat(),
-            "glassbox_version": __version__,
-            "verification": self.verify(),
-            "head": self.head(),
-            "events": events,
-        }
+        # One lock for the whole export, so the receipts, the verification
+        # result, and the head all describe the same ledger state.
+        with self._write_lock:
+            events: list[dict[str, Any]] = []
+            before_id: int | None = None
+            while True:
+                page = self.page_events(500, before_id=before_id)
+                events.extend(page["events"])
+                before_id = page["next_before_id"]
+                if before_id is None:
+                    break
+            events.reverse()
+            return {
+                "exported_at": datetime.now(UTC).isoformat(),
+                "glassbox_version": __version__,
+                "verification": self.verify(),
+                "head": self.head(),
+                "events": events,
+            }
 
     # --- Retention ----------------------------------------------------------------
 
@@ -2461,6 +2471,10 @@ class EventStore:
             raise ValueError("Pruning needs keep_last, older_than, or both")
         if keep_last is not None and keep_last < 0:
             raise ValueError("keep_last must not be negative")
+        if older_than is not None and older_than < timedelta(0):
+            # A negative age puts the cutoff in the future and would prune
+            # every snapshot, including ones just recorded.
+            raise ValueError("older_than must not be negative")
         if not self.verify()["valid"]:
             raise RuntimeError("Receipt chain verification failed; refusing to prune")
         with self._write_lock:

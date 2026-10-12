@@ -459,3 +459,25 @@ def test_fifo_at_the_target_does_not_hang_rollback(tmp_path):
         response = _rollback(client, event["id"])
 
     assert response.status_code == 409
+
+
+def test_receipt_already_rolled_back_is_not_applied_to_a_recreated_file(tmp_path):
+    workspace, app = _app(tmp_path)
+    target = workspace / "demo.txt"
+    target.write_text("created", encoding="utf-8")
+    deleted_target = workspace / "old.txt"
+
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        created = _record(client, "file.create", "demo.txt", after_text="created")
+        deleted = _record(client, "file.delete", "old.txt", before_text="old")
+        assert _rollback(client, created["id"]).status_code == 200
+        assert _rollback(client, deleted["id"]).status_code == 200
+        # The same states come back on purpose after the rollbacks.
+        target.write_text("created", encoding="utf-8")
+        deleted_target.unlink()
+        responses = [_rollback(client, item["id"]) for item in (created, deleted)]
+
+    assert [response.status_code for response in responses] == [409, 409]
+    assert "already rolled back" in responses[0].json()["detail"]
+    assert target.read_text(encoding="utf-8") == "created"
+    assert not deleted_target.exists()
