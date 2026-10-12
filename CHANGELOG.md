@@ -4,6 +4,8 @@ All notable changes to Glassbox are documented in this file. The project follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-12
+
 ### Added
 
 - Claude Code hook (`glassbox hook claude-code`) that records file edits with before and after text, new files, and shell commands
@@ -15,6 +17,7 @@ All notable changes to Glassbox are documented in this file. The project follows
 - Dashboard server-side search and filters, session grouping, automatic refresh, whole-ledger metrics, and receipt metadata
 - `glassbox.client.GlassboxClient`, a standard-library HTTP client
 - Chain-head anchoring with `glassbox head` and `glassbox verify --expect-head`
+- Release workflow that publishes to PyPI as `glassbox-agent` through trusted publishing
 
 ### Changed
 
@@ -61,6 +64,7 @@ All notable changes to Glassbox are documented in this file. The project follows
 - UID, GID, mode, inode, hard-link, POSIX ACL, and newer-work conflict checks
 - Loopback-only API, self-contained dashboard, CLI, synthetic demo, and release packaging
 
-[Unreleased]: https://github.com/jckm14/glassbox/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/jckm14/glassbox/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jckm14/glassbox/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/jckm14/glassbox/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jckm14/glassbox/releases/tag/v0.1.0

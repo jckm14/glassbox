@@ -72,7 +72,7 @@ jobs:
           uv venv /tmp/glassbox-release
           uv pip install --python /tmp/glassbox-release/bin/python dist/*.whl
           /tmp/glassbox-release/bin/glassbox --help
-          /tmp/glassbox-release/bin/python -c "import glassbox; assert glassbox.__version__ == '0.1.1'"
+          /tmp/glassbox-release/bin/python -c "import glassbox, importlib.metadata as m; assert glassbox.__version__ == m.version('glassbox-agent'), (glassbox.__version__, m.version('glassbox-agent'))"
       - name: Upload distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
