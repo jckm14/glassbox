@@ -42,15 +42,15 @@ Changelog = "https://github.com/jckm14/glassbox/blob/main/CHANGELOG.md"
 [project.optional-dependencies]
 test = [
   "httpx2<3,>=2.10.0",
-  "pytest>=8,<10",
+  "pytest<10,>=8",
 ]
 
 [dependency-groups]
 dev = [
   "httpx2==2.16.0",
-  "mypy==2.4.0",
-  "pytest==9.1.1",
-  "ruff==0.17.2",
+  "mypy==2.4.1",
+  "pytest==9.2.0",
+  "ruff==0.17.3",
 ]
 
 [project.scripts]
